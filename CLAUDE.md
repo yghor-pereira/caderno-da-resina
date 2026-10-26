@@ -4,23 +4,39 @@ App de gestão financeira e de produção para **pequenos produtores de pinus e 
 
 ## Estado atual
 
-- Tudo em um único arquivo: `index.html` (HTML + CSS + JS puro, sem build e sem dependências).
-- Publicado no **GitHub Pages** (branch `main`, raiz).
-- Dados salvos no **localStorage** (`caderno-resina-contas-v1`). Login, senhas e separação entre usuários são **simulados** e só valem no mesmo navegador.
-- A emissão de NF-e é **simulada**: gera número e chave fictícios. A busca de CNPJ usa BrasilAPI, com Minha Receita como alternativa.
+- App estático, sem build e sem dependências: `index.html` (casca) + `css/app.css` + módulos ES em `js/`. Publicado no **GitHub Pages** (branch `main`, raiz); todos os caminhos são relativos.
+- **Supabase** (projeto `xqvybotystsygeorbspd`, região `us-east-1`; migrar para São Paulo é uma opção futura): Auth com e-mail e senha (confirmação de e-mail desligada) e PostgreSQL com **RLS** em todas as tabelas (cada usuário só lê e grava as próprias linhas). A chave `anon` fica em `js/config.js`; a `service_role` nunca entra no repositório.
+- **Offline**: tudo é gravado primeiro num cache local por usuário (`localStorage`, chave `caderno-resina-v2:<user_id>`) e entra numa fila. `js/nuvem.js` envia a fila e busca o que mudou quando há conexão. O `sw.js` guarda a casca do app para abrir sem internet. O primeiro login precisa de internet.
+- Exclusão é **lógica** (`deleted_at`); `updated_at` é gravado pelo servidor e é o cursor da sincronização. Conflito: vale a gravação mais recente, mas alteração local ainda na fila nunca é sobrescrita pela busca.
+- A emissão de NF-e é **simulada**: gera número e chave fictícios. A busca de CNPJ usa BrasilAPI, com Minha Receita como alternativa (precisa de internet).
 - As cotações de dólar, euro e goma resina são **fixas** (constante `MERCADO`). No futuro virão de API (Banco Central / CEPEA).
-- Usuário de exemplo, criado na primeira abertura: `produtor@exemplo.com` / `resina123`, com duas fazendas (SC e PR).
+- Conta de exemplo no Supabase: `produtor@exemplo.com` / `resina123`. No primeiro login o app cria as duas fazendas (SC e PR) com `exemplo()`; fazendas `demo` dessa conta com dados de mais de 7 dias são regeradas ao entrar (as datas são relativas a hoje).
 
-## Próximo passo planejado
+## Módulos (`js/`)
 
-1. Separar o `index.html` em módulos (telas, cálculos, armazenamento, gráficos) sem mudar o comportamento.
-2. Integrar com o **Supabase** (projeto na região São Paulo):
-   - Supabase Auth para o login (e-mail e senha).
-   - PostgreSQL com **RLS**: cada usuário só lê e grava os próprios registros.
-   - O app continua estático no GitHub Pages; ele fala direto com o Supabase.
-   - A chave `anon` pode ficar no código; quem protege os dados é a RLS.
-3. **Modo offline:** o produtor aponta estria e coleta na floresta, muitas vezes sem sinal. Guardar localmente e sincronizar quando a internet voltar.
-4. Cotações reais e NF-e real (certificado digital do produtor e SEFAZ) ficam para depois da validação.
+| Arquivo | Papel |
+|---|---|
+| `util.js` | Formatação, datas, `uid()` (UUID), `definirHoje()` para testes |
+| `regras.js` | Constantes do negócio e cálculos sobre o `S` da fazenda aberta (`usarDados`) |
+| `exemplo.js` | Gera dados de exemplo relativos a hoje |
+| `local.js` | Cache por usuário, fila, `gravar`/`excluir`/`mesclar` |
+| `mapa.js` | Linhas do banco ⇄ formato `S` das telas (`montarDados`, `linha.*`) |
+| `nuvem.js` | Cliente Supabase, login, `enviar`/`buscar`/`sincronizar` |
+| `estado.js` | Sessão, estado da tela (`E`), `salvar`/`salvarLote`/`apagar`, agenda da sincronização, conta de exemplo |
+| `telas.js`, `nfe.js`, `graficos.js`, `app.js` | Telas, NF-e simulada, gráficos SVG, render e eventos |
+
+As telas leem `S` (formato em memória); **toda gravação passa por `salvar(tabela, linha)`** com os conversores de `mapa.js`. Nunca altere `S` diretamente: ele é remontado do cache a cada mudança.
+
+## Banco e testes
+
+- Esquema em `supabase/migrations/0001_inicial.sql`. Mudança de esquema = nova migração numerada.
+- `npm test` roda os testes com `node --test` (sem instalar nada). `supabase/teste-rls.mjs` verifica o isolamento entre contas.
+- Para rodar localmente: `python3 -m http.server` na raiz e abrir `http://localhost:8000`.
+
+## Próximos passos
+
+1. Cotações reais e NF-e real (certificado digital do produtor e SEFAZ), depois da validação com produtores.
+2. Avaliar mover o projeto Supabase para `sa-east-1`.
 
 ## Glossário do negócio (fonte: o próprio produtor)
 
@@ -70,22 +86,22 @@ Funções desligadas só escondem as telas; nenhum registro é apagado. A Iníci
 - Ao entrar, **escolhe a fazenda**. Com mais de uma fazenda, existe a **Visão geral**, que consolida todas: só leitura, com comparativo e saldo projetado.
 - Cada usuário vê **somente os próprios registros**.
 
-## Modelo de dados (atual, em JSON; base para as tabelas do Supabase)
+## Modelo de dados em memória (formato `S` das telas; as tabelas estão na migração)
 
 ```
-usuario { id, nome, email, senha(hash fictício), modulos{caixa,floresta,producao,vendas,nfe,resultado}, fazendas[] }
+usuario { id, nome, email, modulos{caixa,floresta,producao,vendas,nfe,resultado}, fazendas[] }
 fazenda { id, nome, ie, doc, municipio, uf, dados }
 dados   { regime: 'funrural'|'folha', saldoInicial, ideal (dias), demo,
           talhoes[ { id, nome, ramais[ { id, cod, hist[ {data, arv, motivo} ] } ] } ],
-          estrias[ { id, data, talhao, ramais[ids], qtd, resineiro, dias } ],
-          producao[ { id, data, talhao, ramais[ids], kg } ],
-          vendas[ { id, data, comprador, kg, preco, comNota, nf{...}|null, recs[ {id,data,valor,forma} ], venc } ],
+          estrias[ { id, data, talhao(id), ramais[ids], qtd, resineiro, dias } ],
+          producao[ { id, data, talhao(id), ramais[ids], kg } ],
+          vendas[ { id, data, comprador, kg, preco, fator, comNota, nf{...}|null, recs[ {id,data,valor,forma} ], venc } ],
           caixa[ { id, data, tipo:'d'|'r', cat, desc, valor } ],   // realizado
           comp[ { id, data, tipo, cat, desc, valor } ],            // compromissos futuros
           compradores{ nome: {doc, dest} } }
 ```
 
-Ao migrar: `talhao` deve virar chave estrangeira (hoje é o nome), as datas ficam como `date` e os valores como `numeric`.
+Cada venda guarda o `fator` do regime da época (Funrural 0,9837 / folha 0,998): trocar o regime da fazenda só vale para vendas novas.
 
 ## Interface
 
@@ -98,5 +114,6 @@ Ao migrar: `talhao` deve virar chave estrangeira (hoje é o nome), as datas fica
 ## Cuidados
 
 - Não quebrar a conta de exemplo nem os dados gerados por `exemplo()`; eles são usados nas demonstrações.
-- Mudanças de modelo de dados precisam de migração ou de nova chave de armazenamento.
+- Mudanças de modelo de dados precisam de migração no Supabase e, se mudar o formato do cache, de nova chave de armazenamento local.
+- Ao adicionar um arquivo em `js/`, inclua-o na lista `CASCA` do `sw.js` e troque a versão do cache (`caderno-v1` → `v2`).
 - Valores em R$ com `toLocaleString('pt-BR')`; datas internas em `AAAA-MM-DD`.
