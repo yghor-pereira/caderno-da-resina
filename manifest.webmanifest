@@ -1,0 +1,12 @@
+{
+  "name": "Caderno da Resina",
+  "short_name": "Resina",
+  "description": "Gestão financeira e de produção para pequenos produtores de pinus e resina.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5ef",
+  "theme_color": "#24533a",
+  "icons": [{ "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

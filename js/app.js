@@ -248,3 +248,5 @@ async function iniciar(){
   if (SES.L && (await sincronizar()).ok) prepararExemplo();
 }
 iniciar();
+/* guarda o app no aparelho para abrir sem internet */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
