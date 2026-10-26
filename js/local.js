@@ -34,12 +34,16 @@ function excluirLote(L, itens){
   gravarLote(L, itens.filter(([t,id])=>L.linhas[t]?.[id]).map(([t,id])=>[t, {id, deleted_at:agora}]));
 }
 function definirMeta(L, meta){ Object.assign(L.meta, meta); persistir(L); }
-/* linhas que chegaram do servidor; o que ainda está na fila é mais novo e fica */
+/* a versão do servidor traz só updated_at e user_id a mais quando nada mudou de fato */
+const igual = (local, remota) => !!local && Object.entries(remota).every(([k,v]) =>
+  k==='updated_at' || k==='user_id' || JSON.stringify(v ?? null)===JSON.stringify(local[k] ?? null));
+/* linhas que chegaram do servidor; o que ainda está na fila é mais novo e fica.
+   Devolve quantas mudaram de verdade (as próprias gravações voltando não contam). */
 function mesclar(L, tabela, remotas){
   const tab = L.linhas[tabela] ??= {};
   let n = 0;
   for (const r of remotas) {
-    if (!naFila(L, tabela, r.id)) { tab[r.id] = r; n++; }
+    if (!naFila(L, tabela, r.id)) { if (!igual(tab[r.id], r)) n++; tab[r.id] = r; }
     if (!L.cursor[tabela] || r.updated_at > L.cursor[tabela]) L.cursor[tabela] = r.updated_at;
   }
   persistir(L);

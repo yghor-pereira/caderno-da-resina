@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoria, clienteFalso } from './apoio.js';
 import { abrir, gravar, pendentes, ativas } from '../js/local.js';
-import { criarNuvem } from '../js/nuvem.js';
+import { criarNuvem, classificarSessao } from '../js/nuvem.js';
 
 const novoL = () => abrir('user-1', memoria());
 
@@ -98,4 +98,57 @@ test('depois de sincronizar, registros apagados já enviados saem do aparelho', 
   const linhas = { talhoes: [{ id: 't3', nome: 'C', deleted_at: '2026-10-26T00:00:00Z', updated_at: '2026-10-26T01:00:00Z' }] };
   await criarNuvem(clienteFalso({ linhas }), L).sincronizar();
   assert.deepEqual(Object.keys(L.linhas.talhoes).sort(), ['t1']);
+});
+
+test('edição feita enquanto o registro está sendo enviado não se perde', async () => {
+  const L = novoL();
+  gravar(L, 'vendas', { id: 'v1', fazenda_id: 'f1', kg: 10, nf: null });
+  let liberar; const espera = new Promise(r => { liberar = r; });
+  const servidor = {};
+  const c = clienteFalso({ upsert: async (t, rows) => { const copia = structuredClone(rows); await espera; for (const r of copia) servidor[r.id] = r; return { error: null }; } });
+  const envio = criarNuvem(c, L).enviar();
+  gravar(L, 'vendas', { id: 'v1', nf: { numero: 1 } });   // NF-e emitida durante o envio
+  liberar(); await envio;
+  assert.deepEqual(L.fila, [['vendas', 'v1']]);
+  assert.deepEqual(L.linhas.vendas.v1.nf, { numero: 1 });
+  await criarNuvem(c, L).enviar();
+  assert.deepEqual(servidor.v1.nf, { numero: 1 });
+  assert.equal(pendentes(L), 0);
+});
+
+test('sessão vencida no envio um a um não marca erro nem tira da fila', async () => {
+  const L = novoL();
+  gravar(L, 'talhoes', { id: 't1', fazenda_id: 'f1', nome: 'A' });
+  gravar(L, 'talhoes', { id: 't2', fazenda_id: 'f1', nome: 'B' });
+  let n = 0;
+  const upsert = async () => (++n === 1 ? { error: { code: '23514', message: 'lote' } } : { error: { code: 'PGRST303', message: 'JWT expired' } });
+  const r = await criarNuvem(clienteFalso({ upsert }), L).enviar();
+  assert.equal(r.sessao, false);
+  assert.equal(pendentes(L), 2);
+  assert.equal(L.linhas.talhoes.t1._erro, undefined);
+});
+
+test('busca que falha por erro de dado não conta como sincronização bem-sucedida', async () => {
+  const L = novoL();
+  const c = clienteFalso();
+  c.from = () => ({ select: () => { const b = { gt: () => b, order: () => b, range: () => b, then: (res) => Promise.resolve({ data: null, error: { code: '42P01', message: 'tabela' } }).then(res) }; return b; } });
+  const r = await criarNuvem(c, L).sincronizar();
+  assert.equal(r.ok, false);
+});
+
+test('se a sessão trocou de usuário, a sincronização para sem gravar no cache antigo', async () => {
+  const L = novoL();
+  gravar(L, 'fazendas', { id: 'f1', nome: 'F', ie: '12345678', uf: 'PR' });
+  let ativo = true;
+  const linhas = { fazendas: [{ id: 'fB', nome: 'Do outro', updated_at: '2026-10-26T10:00:00Z' }] };
+  const c = clienteFalso({ linhas, upsert: async () => { ativo = false; return { error: null }; } });
+  await criarNuvem(c, L, { ativo: () => ativo }).sincronizar();
+  assert.equal(L.linhas.fazendas.fB, undefined);
+});
+
+test('classificarSessao separa sessão válida, sem rede e sem sessão', () => {
+  assert.equal(classificarSessao({ data: { session: { user: { id: 'u' } } }, error: null }), 'ok');
+  assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthRetryableFetchError', message: 'Failed to fetch' } }), 'offline');
+  assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthApiError', status: 400, message: 'Invalid Refresh Token' } }), 'nenhuma');
+  assert.equal(classificarSessao({ data: { session: null }, error: null }), 'nenhuma');
 });

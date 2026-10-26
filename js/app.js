@@ -2,9 +2,9 @@ import { brl, num, esc, uid, hoje, safraIni, sum } from './util.js';
 import { saldoV, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S } from './regras.js';
 import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, usarFazendaId,
-  salvar, salvarLote, apagar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
+  salvar, salvarLote, apagar, limparFazenda, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
 import { ultimoUsuario } from './local.js';
-import { linha, linhasDaFazenda, linhasDoTalhao } from './mapa.js';
+import { linha, linhasDoTalhao } from './mapa.js';
 import { entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
 import { soDig, abrirEmissao } from './nfe.js';
 import { V } from './telas.js';
@@ -56,12 +56,13 @@ E.mostrarSync = mostrarSync;
 /* ---------- render e eventos ---------- */
 const app = document.getElementById('app');
 const hdr=document.getElementById('hdr'), nav=document.getElementById('nav');
-const campoEmFoco = () => app.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+/* alguém usando a tela: campo ou botão em foco, ou janela (NF-e) aberta */
+const emUso = () => !!document.querySelector('dialog[open]') || (app.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement.tagName));
 let renderPendente = false;
 E.render = render;
 /* {seguro:true}: vindo da sincronização; não redesenha por cima de um formulário sendo preenchido */
 function render(op){
-  if (op?.seguro && campoEmFoco()) { renderPendente=true; return; }
+  if (op?.seguro && emUso()) { renderPendente=true; return; }
   renderPendente=false;
   const u=usuario(), fid=SES.fid;
   if (E.atual==='carregando') { app.innerHTML='<p class="note">Abrindo o caderno…</p>'; hdr.innerHTML='<h1>Caderno da Resina</h1>'; nav.hidden=true; return; }
@@ -74,7 +75,7 @@ function render(op){
   const f=fazAtual(), g=fid==='todas';
   hdr.innerHTML = !u ? `<h1>Caderno da Resina</h1><p>Gestão simples para quem vive do pinus</p>`
     : `<div class="hrow"><div><h1>${g?'Visão geral':f?esc(f.nome):'Caderno da Resina'}</h1>
-        <p>${g? u.fazendas.length+' fazendas · '+esc(u.nome) : f? 'IE '+esc(f.ie)+' · '+esc(f.municipio)+'/'+f.uf : esc(u.nome)}</p>
+        <p>${g? u.fazendas.length+' fazendas · '+esc(u.nome) : f? 'IE '+esc(f.ie)+' · '+esc(f.municipio)+'/'+esc(f.uf) : esc(u.nome)}</p>
         <button type="button" id="sync" class="sync"></button></div>
         <div class="hbtn">${(f||g)?'<button type="button" class="btn sm ghost" data-trocar="1">Trocar fazenda</button>':''}<button type="button" class="btn sm ghost" data-conta="1" ${E.atual==='conta'?'aria-current="page"':''}>Conta</button></div></div>`;
   nav.hidden = !f;
@@ -85,7 +86,7 @@ function render(op){
   mostrarSync(); syncAp(); syncVenda();
 }
 function ir(v){ E.atual=v; E.editar=null; E.confirmar=null; render(); window.scrollTo(0,0); }
-app.addEventListener('focusout',()=>setTimeout(()=>{ if(renderPendente && !campoEmFoco()) render(); },0));
+app.addEventListener('focusout',()=>setTimeout(()=>{ if(renderPendente && !emUso()) render(); },0));
 nav.addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) ir(b.dataset.v); });
 hdr.addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b) return;
   if(b.dataset.trocar){ usarFazendaId(null); ir('fazendas'); }
@@ -95,8 +96,7 @@ hdr.addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!
     else if(b.dataset.sync==='login'){ E.emailPre=usuario()?.email||''; await fecharSessao(); E.lMode='entrar'; ir('login'); }
     else sincronizar();
   } });
-document.getElementById('limpar').addEventListener('click',()=>{ const f=fazAtual(); if(!f) return;
-  salvarLote([...linhasDaFazenda(SES.L, f.id).map(([t,id])=>[t,{id, deleted_at:agoraIso()}]), ['fazendas',{id:f.id, demo:false}]]); });
+document.getElementById('limpar').addEventListener('click',()=>{ const f=fazAtual(); if(f) limparFazenda(f.id); });
 
 /* registros a apagar junto (filhos) quando o produtor exclui algo */
 function itensExcluir(tab, id){
@@ -121,8 +121,7 @@ app.addEventListener('click',async e=>{
     else { await fecharSessao(); E.sairPend=false; E.lMode='entrar'; E.emailPre=''; ir('login'); } }
   else if(d.editfaz!==undefined){ E.fazEdit=d.editfaz||null; E.limparPend=null; render(); if(E.fazEdit) document.getElementById('fFaz')?.scrollIntoView({block:'start'}); }
   else if(d.limpafaz!==undefined){
-    if(d.ok){ const id=d.limpafaz; E.limparPend=null;
-      salvarLote([...linhasDaFazenda(SES.L, id).map(([t,x])=>[t,{id:x, deleted_at:agoraIso()}]), ['fazendas',{id, demo:false}]]); }
+    if(d.ok){ E.limparPend=null; limparFazenda(d.limpafaz); }
     else { E.limparPend=d.limpafaz||null; render(); } }
   else if(d.regerar){ const f=usuario().fazendas.find(x=>x.id===d.regerar); if(f) regerarExemplo(f); }
   else if(d.safra){ E.safraSel=+d.safra; render(); }
@@ -241,8 +240,8 @@ setInterval(()=>{ if(document.visibilityState==='visible' && SES.L) sincronizar(
 async function iniciar(){
   E.atual='carregando'; render();
   const s=await sessao(), ult=ultimoUsuario();
-  if (s) abrirSessao(s.user.id, {email:s.user.email, nome:s.user.user_metadata?.nome||''});
-  else if (ult && !navigator.onLine) abrirSessao(ult);
+  if (s.estado==='ok') abrirSessao(s.session.user.id, {email:s.session.user.email, nome:s.session.user.user_metadata?.nome||''});
+  else if (ult && (s.estado==='offline' || !navigator.onLine)) abrirSessao(ult);   // sem rede (ou rede ruim): abre o cache
   E.atual = SES.L ? 'fazendas' : 'login';
   render();
   if (SES.L && (await sincronizar()).ok) prepararExemplo();

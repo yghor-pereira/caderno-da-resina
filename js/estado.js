@@ -50,10 +50,10 @@ function abrirSessao(userId, meta={}){
 }
 async function fecharSessao(){
   clearTimeout(timer);
-  await sairNuvem();
+  SES.L = null; SES.fid = null; SES.nuvem = null;   // primeiro: uma sincronização em andamento para de gravar
   definirUltimo(null);
-  SES.L = null; SES.fid = null; SES.nuvem = null;
   recarregar();
+  await sairNuvem();
 }
 function usarFazendaId(fid){ SES.fid = fid; recarregar(); }
 
@@ -61,9 +61,14 @@ function usarFazendaId(fid){ SES.fid = fid; recarregar(); }
 function salvar(tabela, l){ gravar(SES.L, tabela, l); recarregar(); E.render(); agendar(); }
 function salvarLote(itens){ gravarLote(SES.L, itens); recarregar(); E.render(); agendar(); }
 function apagar(itens){ excluirLote(SES.L, itens); recarregar(); E.render(); agendar(); }
+/* apaga todos os registros da fazenda; o cadastro fica, sem saldo inicial e sem marca de exemplo */
+function limparFazenda(fid){
+  const agora = new Date().toISOString();
+  salvarLote([...linhasDaFazenda(SES.L, fid).map(([t,id])=>[t,{id, deleted_at:agora}]), ['fazendas',{id:fid, demo:false, saldo_inicial:0}]]);
+}
 
 /* ---------- sincronização ---------- */
-let timer = null;
+let timer = null, ultErros = 0;
 function agendar(ms=2000){ clearTimeout(timer); timer = setTimeout(sincronizar, ms); E.mostrarSync(); }
 async function sincronizar(){
   if (!SES.L) return {ok:false};
@@ -73,12 +78,15 @@ async function sincronizar(){
   let r;
   try {
     const s = await sessao();
-    if (!s || s.user.id!==L.userId) r = {ok:false, sessao:false};
-    else { SES.nuvem ??= criarNuvem(await conectar(), L); r = await SES.nuvem.sincronizar(); }
+    if (s.estado==='offline') r = {ok:false, offline:true};
+    else if (s.estado!=='ok' || s.session.user.id!==L.userId) r = {ok:false, sessao:false};
+    else { SES.nuvem ??= criarNuvem(await conectar(), L, {ativo:()=>SES.L===L}); r = await SES.nuvem.sincronizar(); }
   } catch(e) { r = {ok:false, offline:true}; }
   if (SES.L!==L) return r;           // trocou de usuário no meio do caminho
-  SES.sync = r.offline ? 'offline' : r.sessao===false ? 'sessao' : erros(L).length ? 'erro' : 'ok';
-  if (r.mudou || r.erros) { recarregar(); E.render({seguro:true}); }
+  const nErros = erros(L).length;
+  SES.sync = r.offline ? 'offline' : r.sessao===false ? 'sessao' : nErros ? 'erro' : 'ok';
+  if (r.mudou || nErros!==ultErros) { recarregar(); E.render({seguro:true}); }
+  ultErros = nErros;
   E.mostrarSync();
   return r;
 }
@@ -113,4 +121,4 @@ function prepararExemplo(){
 }
 
 export { MODS, MOD_PADRAO, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, recarregar, abrirSessao, fecharSessao, usarFazendaId,
-  salvar, salvarLote, apagar, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo };
+  salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo };

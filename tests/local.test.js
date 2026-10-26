@@ -104,3 +104,10 @@ test('compactar remove do cache os apagados que não estão na fila', () => {
   compactar(L);
   assert.deepEqual(Object.keys(L.linhas.talhoes).sort(), ['t1', 't3']);
 });
+
+test('mesclar só conta como mudança o que difere do que já está no aparelho', () => {
+  const L = abrir('u1', memoria());
+  gravar(L, 'talhoes', { id: 't1', fazenda_id: 'f1', nome: 'A' }); tirarDaFila(L, 'talhoes', ['t1']);
+  assert.equal(mesclar(L, 'talhoes', [{ id: 't1', fazenda_id: 'f1', nome: 'A', user_id: 'u1', updated_at: '2026-10-26T10:00:00Z', deleted_at: null }]), 0);
+  assert.equal(mesclar(L, 'talhoes', [{ id: 't1', fazenda_id: 'f1', nome: 'B', user_id: 'u1', updated_at: '2026-10-26T11:00:00Z', deleted_at: null }]), 1);
+});

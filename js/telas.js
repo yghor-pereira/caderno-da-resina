@@ -46,7 +46,7 @@ fazendas(){
     <h2>Olá, ${esc(u.nome.split(' ')[0])}. Qual fazenda?</h2>
     ${fs.length?`<div class="fzs">
       ${fs.length>1?`<button type="button" class="card fz geral" data-faz="todas"><b>Visão geral</b><span class="note">As ${fs.length} fazendas consolidadas</span></button>`:''}
-      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${f.uf}</span><span class="note">${f.dados.talhoes.length} talhões · ${num(sum(f.dados.talhoes,painT))} árvores</span></button>`).join('')}
+      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${esc(f.uf)}</span><span class="note">${f.dados.talhoes.length} talhões · ${num(sum(f.dados.talhoes,painT))} árvores</span></button>`).join('')}
     </div>`:'<p class="note">Cadastre sua primeira fazenda para começar. Cada fazenda corresponde a uma Inscrição Estadual.</p>'}
   </section>
   <section class="card sec">${fazForm(null)}</section>`;
@@ -71,7 +71,7 @@ conta(){
   <section class="card sec">
     <h3>Minhas fazendas</h3>
     <div class="list">${u.fazendas.map(f=>`<div class="row"><span class="t">${esc(f.nome)}${f.id===SES.fid?'<span class="pill ok">aberta</span>':''}</span><span class="a"><button type="button" class="lnk" data-editfaz="${f.id}">Editar</button></span>
-      <span class="s">IE ${esc(f.ie)} · ${esc(f.municipio)}/${f.uf} · ${REG[f.dados.regime||'funrural'].nome}${f._erro?` · <span class="down">${esc(f._erro)}</span>`:''}</span></div>`).join('')||'<p class="note">Nenhuma fazenda cadastrada.</p>'}</div>
+      <span class="s">IE ${esc(f.ie)} · ${esc(f.municipio)}/${esc(f.uf)} · ${REG[f.dados.regime||'funrural'].nome}${f._erro?` · <span class="down">${esc(f._erro)}</span>`:''}</span></div>`).join('')||'<p class="note">Nenhuma fazenda cadastrada.</p>'}</div>
   </section>
   <section class="card sec">
     ${fazForm(fe)}
@@ -394,7 +394,7 @@ vendas(){
   const vs=S.vendas.filter(inSafra(E.safraSel)).sort((a,b)=>a.data.localeCompare(b.data));
   const aRec=sum(S.vendas,saldoV);
   const pillRec = v => ({pend:'<span class="pill pend">A receber</span>',parcial:'<span class="pill pend">Parcial</span>',ok:'<span class="pill ok">Recebido</span>'})[statusRec(v)];
-  const pillNf = v => !mod('nfe') ? '' : !v.comNota ? '<span class="pill sem">Sem nota</span>' : v.nf ? `<span class="pill nf">NF-e ${v.nf.numero}</span>` : '<span class="pill nfp">NF-e a emitir</span>';
+  const pillNf = v => !mod('nfe') ? '' : !v.comNota ? '<span class="pill sem">Sem nota</span>' : v.nf ? `<span class="pill nf">NF-e ${esc(v.nf.numero)}</span>` : '<span class="pill nfp">NF-e a emitir</span>';
   return `
   <section class="sec">
     <div class="sec-h"><h2>Vendas e compradores</h2>${chipsSafra()}</div>
@@ -457,7 +457,7 @@ vendas(){
         ${!v.comNota ? `<div class="box"><h3>Nota fiscal</h3><span class="note">Venda registrada sem nota.</span>
             <button type="button" class="btn sm ghost" data-comnota="${v.id}" style="align-self:flex-start">Passar a emitir NF-e</button></div>`
         : v.nf ? `<div class="box"><h3>NF-e autorizada <span class="note">(simulação)</span></h3>
-            <dl class="kv"><dt>Destinatário</dt><dd>${esc(v.nf.dest?.razao||v.comprador)}<br><span class="note">${esc(v.nf.doc||'')}${v.nf.dest?.municipio?' · '+esc(v.nf.dest.municipio)+'/'+esc(v.nf.dest.uf):''}</span></dd><dt>Número</dt><dd>${v.nf.numero} · série ${v.nf.serie}</dd><dt>Emissão</dt><dd>${fdata(v.nf.data)}</dd><dt>CFOP</dt><dd>${v.nf.cfop}</dd><dt>Chave</dt><dd class="chave">${v.nf.chave.replace(/(\d{4})/g,'$1 ').trim()}</dd></dl></div>`
+            <dl class="kv"><dt>Destinatário</dt><dd>${esc(v.nf.dest?.razao||v.comprador)}<br><span class="note">${esc(v.nf.doc||'')}${v.nf.dest?.municipio?' · '+esc(v.nf.dest.municipio)+'/'+esc(v.nf.dest.uf):''}</span></dd><dt>Número</dt><dd>${esc(v.nf.numero)} · série ${esc(v.nf.serie)}</dd><dt>Emissão</dt><dd>${esc(fdata(String(v.nf.data)))}</dd><dt>CFOP</dt><dd>${esc(v.nf.cfop)}</dd><dt>Chave</dt><dd class="chave">${esc(String(v.nf.chave).replace(/(\d{4})/g,'$1 ').trim())}</dd></dl></div>`
         : `<div class="box"><h3>Nota fiscal</h3><span class="note">Esta venda precisa de NF-e.</span>
             <button type="button" class="btn sm" data-emitir="${v.id}" style="align-self:flex-start">Emitir NF-e</button></div>`}
         `:''}
