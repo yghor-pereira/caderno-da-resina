@@ -1,9 +1,11 @@
-import { uid, hoje, safraIni } from './util.js';
+import { uid, hoje, safraIni, diff } from './util.js';
 import { usarDados } from './regras.js';
 import { exemplo } from './exemplo.js';
+import { abrir, gravar, gravarLote, excluirLote, definirMeta, pendentes, erros, definirUltimo } from './local.js';
+import { linha, dadosParaLinhas, fazendasDe, linhasDaFazenda } from './mapa.js';
+import { criarNuvem, conectar, sessao, sair as sairNuvem } from './nuvem.js';
 
-/* ---------- contas e fazendas (protótipo: tudo fica salvo neste navegador) ---------- */
-const DBKEY = 'caderno-resina-contas-v1';
+/* ---------- funções do app (cada usuário liga e desliga em Conta) ---------- */
 const MODS = [
   {k:'caixa', n:'Caixa e fluxo previsto', d:'Lançamentos, compromissos futuros e projeção de saldo'},
   {k:'floresta', n:'Floresta e operações', d:'Talhões, ramais, contagem de árvores, apontamento de estria e coleta'},
@@ -14,33 +16,101 @@ const MODS = [
 ];
 const MOD_PADRAO = Object.fromEntries(MODS.map(m=>[m.k,true]));
 const NAV_MOD = {caixa:'caixa', floresta:'floresta', producao:'producao', vendas:'vendas', resultado:'resultado'};
-const hashS = s => { let h=5381; for (const c of s) h=((h<<5)+h+c.charCodeAt(0))|0; return (h>>>0).toString(36); };
-let DB;
-try { DB = JSON.parse(localStorage.getItem(DBKEY)) || {users:[], sessao:null}; } catch(e) { DB = {users:[], sessao:null}; }
-const salvar = () => { try { localStorage.setItem(DBKEY, JSON.stringify(DB)); } catch(e){} };
-const usuario = () => DB.users.find(u=>u.id===DB.sessao?.uid) || null;
-const fazAtual = () => usuario()?.fazendas.find(f=>f.id===DB.sessao?.fid) || null;
-const mod = k => !!usuario()?.modulos?.[k];
 const vazio = () => ({demo:false, regime:'funrural', saldoInicial:0, ideal:14, talhoes:[], estrias:[], producao:[], vendas:[], caixa:[], comp:[], compradores:{}});
-usarDados(fazAtual()?.dados || vazio());
+
+usarDados(vazio());
 
 /* ---------- estado da tela ---------- */
 const CUR = safraIni(hoje());
-const E = {atual:'inicio', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null, lMode:'entrar', fazEdit:null, limparPend:null, aberta:null, render:()=>{}};
+const E = {atual:'login', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null,
+  lMode:'entrar', fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
+  render:()=>{}, mostrarSync:()=>{}};
 
-/* usuário de exemplo: criado na primeira abertura do app */
-const EX = {email:'produtor@exemplo.com', senha:'resina123'};
-function garantirExemplo(){
-  let u = DB.users.find(x=>x.email===EX.email);
-  if (!u) {
-    u = {id:uid(), nome:'José Ferreira (exemplo)', email:EX.email, senha:hashS(EX.senha), modulos:{...MOD_PADRAO}, fazendas:[
-      {id:uid(), nome:'Fazenda Capão Alto', ie:'254123987', doc:'', municipio:'Itaiópolis', uf:'SC', dados:exemplo(11)},
-      {id:uid(), nome:'Sítio Boa Esperança', ie:'9012345678', doc:'', municipio:'Rio Negro', uf:'PR', dados:exemplo(23,[['Talhão 1',8,'Pedro'],['Talhão 2',7,'Luís']])}
-    ]};
-    DB.users.push(u); salvar();
-  }
-  return u;
+/* ---------- sessão: usuário logado e o cache local dele ---------- */
+const SES = {L:null, fid:null, sync:'ok', nuvem:null};
+let versao = 0, memo = {v:-1, u:null};
+function usuario(){
+  if (!SES.L) return null;
+  if (memo.v===versao) return memo.u;
+  const p = SES.L.linhas.perfis?.[SES.L.userId];
+  memo = {v:versao, u:{id:SES.L.userId, email:SES.L.meta.email||'', nome:p?.nome || SES.L.meta.nome || '',
+    modulos:p?.modulos || MOD_PADRAO, fazendas:fazendasDe(SES.L)}};
+  return memo.u;
 }
-garantirExemplo();
+const fazAtual = () => usuario()?.fazendas.find(f=>f.id===SES.fid) || null;
+const mod = k => !!usuario()?.modulos?.[k];
+/* remonta S a partir do cache depois de qualquer mudança */
+function recarregar(){ versao++; usarDados(fazAtual()?.dados || vazio()); }
 
-export { DBKEY, MODS, MOD_PADRAO, NAV_MOD, hashS, DB, salvar, usuario, fazAtual, mod, vazio, CUR, E, EX, garantirExemplo };
+function abrirSessao(userId, meta={}){
+  SES.L = abrir(userId); SES.fid = null; SES.nuvem = null; SES.sync = 'ok';
+  definirUltimo(userId);
+  if (meta.email) definirMeta(SES.L, meta);
+  recarregar();
+}
+async function fecharSessao(){
+  clearTimeout(timer);
+  await sairNuvem();
+  definirUltimo(null);
+  SES.L = null; SES.fid = null; SES.nuvem = null;
+  recarregar();
+}
+function usarFazendaId(fid){ SES.fid = fid; recarregar(); }
+
+/* ---------- gravações: cache local + fila; a sincronização vem logo depois ---------- */
+function salvar(tabela, l){ gravar(SES.L, tabela, l); recarregar(); E.render(); agendar(); }
+function salvarLote(itens){ gravarLote(SES.L, itens); recarregar(); E.render(); agendar(); }
+function apagar(itens){ excluirLote(SES.L, itens); recarregar(); E.render(); agendar(); }
+
+/* ---------- sincronização ---------- */
+let timer = null;
+function agendar(ms=2000){ clearTimeout(timer); timer = setTimeout(sincronizar, ms); E.mostrarSync(); }
+async function sincronizar(){
+  if (!SES.L) return {ok:false};
+  const L = SES.L;
+  if (!navigator.onLine) { SES.sync='offline'; E.mostrarSync(); return {ok:false, offline:true}; }
+  SES.sync = 'enviando'; E.mostrarSync();
+  let r;
+  try {
+    const s = await sessao();
+    if (!s || s.user.id!==L.userId) r = {ok:false, sessao:false};
+    else { SES.nuvem ??= criarNuvem(await conectar(), L); r = await SES.nuvem.sincronizar(); }
+  } catch(e) { r = {ok:false, offline:true}; }
+  if (SES.L!==L) return r;           // trocou de usuário no meio do caminho
+  SES.sync = r.offline ? 'offline' : r.sessao===false ? 'sessao' : erros(L).length ? 'erro' : 'ok';
+  if (r.mudou || r.erros) { recarregar(); E.render({seguro:true}); }
+  E.mostrarSync();
+  return r;
+}
+const nPendentes = () => SES.L ? pendentes(SES.L) : 0;
+const listaErros = () => SES.L ? erros(SES.L) : [];
+
+/* ---------- conta de exemplo ---------- */
+const EX = {email:'produtor@exemplo.com', senha:'resina123'};
+const EX_FAZ = [
+  {nome:'Fazenda Capão Alto', ie:'254123987', municipio:'Itaiópolis', uf:'SC', seed:11},
+  {nome:'Sítio Boa Esperança', ie:'9012345678', municipio:'Rio Negro', uf:'PR', seed:23, defs:[['Talhão 1',8,'Pedro'],['Talhão 2',7,'Luís']]}
+];
+/* linhas de uma fazenda com dados de exemplo, datados a partir de hoje */
+function linhasExemplo(f, dados){
+  return [['fazendas', linha.fazenda({...f, demo_gerado_em:hoje()}, dados)],
+    ...Object.entries(dadosParaLinhas(dados, f.id)).flatMap(([t,ls])=>ls.map(l=>[t,l]))];
+}
+function regerarExemplo(f){
+  const c = EX_FAZ.find(x=>x.ie===f.ie);
+  excluirLote(SES.L, linhasDaFazenda(SES.L, f.id));
+  salvarLote(linhasExemplo(f, exemplo(c?.seed ?? 2+Math.floor(Math.random()*997), c?.defs, f.dados.regime)));
+}
+/* na conta de exemplo: cria as duas fazendas na primeira vez e renova dados com mais de 7 dias */
+function prepararExemplo(){
+  const u = usuario();
+  if (u?.email!==EX.email) return;
+  if (!u.fazendas.length) {
+    salvarLote(EX_FAZ.flatMap(c=>linhasExemplo({id:uid(), nome:c.nome, ie:c.ie, doc:'', municipio:c.municipio, uf:c.uf}, exemplo(c.seed, c.defs))));
+    return;
+  }
+  for (const f of u.fazendas) if (f.demo && (!f.demo_gerado_em || diff(f.demo_gerado_em, hoje())>7)) regerarExemplo(f);
+}
+
+export { MODS, MOD_PADRAO, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, recarregar, abrirSessao, fecharSessao, usarFazendaId,
+  salvar, salvarLote, apagar, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo };

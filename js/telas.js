@@ -2,10 +2,17 @@ import { brl, num, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, safraLbl, 
 import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
-import { MODS, MOD_PADRAO, DB, usuario, fazAtual, mod, CUR, E, EX } from './estado.js';
+import { MODS, MOD_PADRAO, usuario, fazAtual, mod, CUR, E, EX, SES, nPendentes, listaErros } from './estado.js';
 
 const safras = () => [...new Set([CUR, ...S.producao.map(p=>safraIni(p.data)), ...S.estrias.map(e=>safraIni(e.data))])].sort();
 const chipsSafra = () => `<div class="chips">${safras().map(y=>`<button type="button" data-safra="${y}" aria-pressed="${y===E.safraSel}">Safra ${safraLbl(y)}</button>`).join('')}</div>`;
+/* links "editar · excluir" de um registro; excluir pede confirmação no próprio lugar */
+const acoes = (tab, id, {editar=false, aviso=''}={}) => E.confirmar===tab+':'+id
+  ? `${aviso?`<span class="down">${aviso}</span> `:''}<button type="button" class="lnk perigo" data-excluir="${tab}:${id}" data-ok="1">confirmar exclusão</button> · <button type="button" class="lnk" data-excluir="">cancelar</button>`
+  : `${editar?`<button type="button" class="lnk" data-editar="${tab}:${id}">editar</button> · `:''}<button type="button" class="lnk" data-excluir="${tab}:${id}">excluir</button>`;
+const editando = (tab, id) => E.editar===tab+':'+id;
+const NOMES_TAB = {fazendas:'Fazenda', talhoes:'Talhão', ramais:'Ramal', contagens:'Contagem', estrias:'Estria', coletas:'Coleta', vendas:'Venda',
+  recebimentos:'Recebimento', lancamentos:'Lançamento', compromissos:'Compromisso', compradores:'Comprador', perfis:'Perfil'};
 const optTalhoes = sel => S.talhoes.map(t=>`<option ${t.nome===sel?'selected':''}>${esc(t.nome)}</option>`).join('');
 
 /* ---------- telas ---------- */
@@ -17,7 +24,7 @@ login(){
     <form id="fLogin">
       ${E.lMode==='criar'?'<label class="full">Seu nome<input id="lNome" required autocomplete="name"></label>':''}
       <label class="full">E-mail<input id="lEmail" type="email" required autocomplete="email"></label>
-      <label class="full">Senha<input id="lSenha" type="password" required minlength="4" autocomplete="${E.lMode==='criar'?'new-password':'current-password'}"></label>
+      <label class="full">Senha<input id="lSenha" type="password" required minlength="6" autocomplete="${E.lMode==='criar'?'new-password':'current-password'}"></label>
       ${E.lMode==='criar'?`<div class="full sec" style="gap:6px"><span class="note">Quais funções você quer usar? Dá para mudar depois em Conta.</span><div class="mods">${modsHtml(MOD_PADRAO)}</div></div>`:''}
       <p class="err full" id="lErr" hidden></p>
       <button class="btn full">${E.lMode==='criar'?'Criar conta':'Entrar'}</button>
@@ -29,7 +36,7 @@ login(){
     <dl class="kv"><dt>E-mail</dt><dd><b>${EX.email}</b></dd><dt>Senha</dt><dd><b>${EX.senha}</b></dd></dl>
     <div class="hbtn"><button type="button" class="btn sm" data-demo="1">Entrar como exemplo</button>${E.lMode==='entrar'?'<button type="button" class="btn sm ghost" data-preencher="1">Preencher o formulário</button>':''}</div>
   </section>
-  <p class="note">Protótipo: contas e registros ficam salvos só neste navegador. Na versão real, o login e a separação dos dados de cada produtor ficam num servidor.</p>`;
+  <p class="note">${navigator.onLine?'Seus registros ficam guardados na nuvem e também neste aparelho, para você usar na floresta sem sinal.':'<b class="down">Sem internet.</b> O primeiro acesso precisa de conexão; depois o app funciona sem sinal.'}</p>`;
 },
 
 fazendas(){
@@ -39,14 +46,14 @@ fazendas(){
     <h2>Olá, ${esc(u.nome.split(' ')[0])}. Qual fazenda?</h2>
     ${fs.length?`<div class="fzs">
       ${fs.length>1?`<button type="button" class="card fz geral" data-faz="todas"><b>Visão geral</b><span class="note">As ${fs.length} fazendas consolidadas</span></button>`:''}
-      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b><span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${f.uf}</span><span class="note">${f.dados.talhoes.length} talhões · ${num(sum(f.dados.talhoes,painT))} árvores</span></button>`).join('')}
+      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${f.uf}</span><span class="note">${f.dados.talhoes.length} talhões · ${num(sum(f.dados.talhoes,painT))} árvores</span></button>`).join('')}
     </div>`:'<p class="note">Cadastre sua primeira fazenda para começar. Cada fazenda corresponde a uma Inscrição Estadual.</p>'}
   </section>
   <section class="card sec">${fazForm(null)}</section>`;
 },
 
 conta(){
-  const u=usuario(), fe=u.fazendas.find(f=>f.id===E.fazEdit);
+  const u=usuario(), fe=u.fazendas.find(f=>f.id===E.fazEdit), erros=listaErros();
   return `
   <section class="sec">
     <h2>Minha conta</h2>
@@ -63,16 +70,25 @@ conta(){
   </section>
   <section class="card sec">
     <h3>Minhas fazendas</h3>
-    <div class="list">${u.fazendas.map(f=>`<div class="row"><span class="t">${esc(f.nome)}${f.id===DB.sessao.fid?'<span class="pill ok">aberta</span>':''}</span><span class="a"><button type="button" class="lnk" data-editfaz="${f.id}">Editar</button></span>
-      <span class="s">IE ${esc(f.ie)} · ${esc(f.municipio)}/${f.uf} · ${REG[f.dados.regime||'funrural'].nome}</span></div>`).join('')||'<p class="note">Nenhuma fazenda cadastrada.</p>'}</div>
+    <div class="list">${u.fazendas.map(f=>`<div class="row"><span class="t">${esc(f.nome)}${f.id===SES.fid?'<span class="pill ok">aberta</span>':''}</span><span class="a"><button type="button" class="lnk" data-editfaz="${f.id}">Editar</button></span>
+      <span class="s">IE ${esc(f.ie)} · ${esc(f.municipio)}/${f.uf} · ${REG[f.dados.regime||'funrural'].nome}${f._erro?` · <span class="down">${esc(f._erro)}</span>`:''}</span></div>`).join('')||'<p class="note">Nenhuma fazenda cadastrada.</p>'}</div>
   </section>
   <section class="card sec">
     ${fazForm(fe)}
     ${fe?`<div class="box"><h3>Apagar registros</h3><span class="note">Remove talhões, operações, vendas e lançamentos de ${esc(fe.nome)}. O cadastro da fazenda continua.</span>
       ${E.limparPend===fe.id?`<div class="hbtn"><button type="button" class="btn sm" style="background:var(--bad)" data-limpafaz="${fe.id}" data-ok="1">Confirmar: apagar tudo</button><button type="button" class="btn sm ghost" data-limpafaz="">Cancelar</button></div>`
       :`<button type="button" class="btn sm ghost" data-limpafaz="${fe.id}" style="align-self:flex-start">Apagar registros desta fazenda</button>`}</div>`:''}
+    ${fe?.demo?`<div class="box"><h3>Dados de exemplo</h3><span class="note">Gerados em ${fe.demo_gerado_em?fdata(fe.demo_gerado_em):'—'}. Regerar troca todos os registros desta fazenda por exemplos novos, com datas a partir de hoje.</span>
+      <button type="button" class="btn sm ghost" data-regerar="${fe.id}" style="align-self:flex-start">Regerar dados de exemplo</button></div>`:''}
   </section>
-  <button type="button" class="btn ghost" data-sair="1">Sair da conta</button>`;
+  ${erros.length?`<section class="card sec" id="erros">
+    <h3>Alterações que não foram salvas na nuvem</h3>
+    <p class="note">Corrija o registro (por exemplo, a Inscrição Estadual) e salve de novo; ele volta para a fila de envio.</p>
+    <div class="list">${erros.map(({tabela,linha:l})=>`<div class="row"><span class="t">${NOMES_TAB[tabela]||tabela}${l.nome?' · '+esc(l.nome):''}</span><span class="s down">${esc(l._erro)}</span></div>`).join('')}</div>
+  </section>`:''}
+  ${E.sairPend?`<div class="box"><h3>Sair da conta</h3><span class="note">Há ${nPendentes()} alteraç${nPendentes()>1?'ões':'ão'} ainda não enviada${nPendentes()>1?'s':''}. Ela${nPendentes()>1?'s':''} fica${nPendentes()>1?'m':''} guardada${nPendentes()>1?'s':''} neste aparelho e ${nPendentes()>1?'são enviadas':'é enviada'} quando você entrar de novo. Sair mesmo assim?</span>
+    <div class="hbtn"><button type="button" class="btn sm" style="background:var(--bad)" data-sair="1" data-ok="1">Sair mesmo assim</button><button type="button" class="btn sm ghost" data-sair="">Cancelar</button></div></div>`
+  :'<button type="button" class="btn ghost" data-sair="1">Sair da conta</button>'}`;
 },
 
 geral(){
@@ -184,9 +200,16 @@ caixa(){
       <button class="btn full">${E.modoCaixa==='real'?'Lançar':'Agendar compromisso'}</button>
     </form>
   </section>
-  <section class="card list">${lista.map(x=>`
+  <section class="card list">${lista.map(x=>{ const tab=E.modoCaixa==='real'?'lancamentos':'compromissos';
+    if (!x.venda && editando(tab, x.id)) return `<form class="fEdLanc row" data-tab="${tab}" data-id="${x.id}" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label>${tab==='lancamentos'?'Data':'Vencimento'}<input name="data" type="date" value="${x.data}" required></label>
+      <label>Valor (R$)<input name="valor" type="number" step="0.01" min="0" inputmode="decimal" value="${x.valor}" required></label>
+      <label class="full">Categoria<select name="cat">${(x.tipo==='d'?CATS_D:CATS_R).map(c=>`<option ${c===x.cat?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label class="full">Descrição<input name="desc" value="${esc(x.desc)}"></label>
+      <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`;
+    return `
     <div class="row"><span class="t">${esc(x.desc||x.cat)}</span><span class="a ${x.tipo==='d'?'down':'up'}">${x.tipo==='d'?'−':'+'} ${brl(x.valor)}</span>
-    <span class="s">${fdata(x.data)} · ${esc(x.cat)}${E.modoCaixa==='comp'&&!x.venda?` · <button type="button" class="lnk" data-realizar="${x.id}">marcar como pago</button>`:''}${x.venda?' · ver em Vendas':''}</span></div>`).join('') || `<p class="note">${E.modoCaixa==='real'?'Nenhum lançamento ainda.':'Nenhum compromisso futuro. Agende salários, insumos e vendas previstas para ver o fluxo.'}</p>`}
+    <span class="s">${fdata(x.data)} · ${esc(x.cat)}${E.modoCaixa==='comp'&&!x.venda?` · <button type="button" class="lnk" data-realizar="${x.id}">marcar como pago</button>`:''}${x.venda?' · ver em Vendas':` · ${acoes(tab, x.id, {editar:true})}`}</span></div>`; }).join('') || `<p class="note">${E.modoCaixa==='real'?'Nenhum lançamento ainda.':'Nenhum compromisso futuro. Agende salários, insumos e vendas previstas para ver o fluxo.'}</p>`}
   </section>`;
 },
 
@@ -209,8 +232,11 @@ floresta(){
     const sel = t?.ramais.find(r=>r.id===E.ramSel);
     return head + `
   <section class="card sec">
-    <div class="sec-h"><h3>Ramais do talhão</h3></div>
+    <div class="sec-h"><h3>Ramais do talhão</h3>${t&&!editando('talhoes',t.id)?`<span class="note">${acoes('talhoes', t.id, {editar:true, aviso:`Excluir ${esc(t.nome)} apaga ${t.ramais.length} ramais, ${S.estrias.filter(e=>e.talhao===t.id).length} estrias e ${S.producao.filter(p=>p.talhao===t.id).length} coletas.`})}</span>`:''}</div>
     ${chipsTal()}
+    ${t&&editando('talhoes',t.id)?`<form id="fEdTal" data-id="${t.id}"><label class="full">Nome do talhão<input id="etNome" value="${esc(t.nome)}" required></label>
+      <p class="err full" id="etErr" hidden></p>
+      <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`:''}
     ${t?`<div class="kpis">
       <div class="card kpi" style="background:var(--bg)"><div class="l">Árvores (painéis)</div><div class="v">${num(painT(t))}</div></div>
       <div class="card kpi" style="background:var(--bg)"><div class="l">Produtividade na safra</div><div class="v">${num(sum(rs,s=>s.kg)/(painT(t)||1),2)} <small>kg/árvore</small></div></div>
@@ -224,6 +250,10 @@ floresta(){
   </section>
   ${sel?`<section class="card sec" id="cardRam">
     <div class="sec-h"><h3>${esc(t.nome)} · ${esc(sel.cod)}</h3><button type="button" class="lnk" data-ram="">Fechar</button></div>
+    ${editando('ramais',sel.id)?`<form id="fEdRam" data-id="${sel.id}"><label class="full">Código do ramal<input id="erCod" value="${esc(sel.cod)}" required></label>
+      <p class="err full" id="erErr" hidden></p>
+      <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`
+    :`<span class="note">Ramal: ${acoes('ramais', sel.id, {editar:true})}</span>`}
     <form id="fCont">
       <label>Nova contagem (árvores)<input id="kArv" type="number" min="0" inputmode="numeric" value="${arv(sel)}" required></label>
       <label>Data<input id="kData" type="date" value="${T0}" required></label>
@@ -231,7 +261,7 @@ floresta(){
       <button class="btn full">Atualizar contagem</button>
     </form>
     <div class="list">${[...sel.hist].reverse().map((h,i,a)=>{ const ant=a[i+1]; const d=ant? h.arv-ant.arv : null;
-      return `<div class="row"><span class="t">${num(h.arv)} árvores</span><span class="a ${d<0?'down':d>0?'up':''}">${d==null?'':(d>0?'+':'')+num(d)}</span><span class="s">${fdata(h.data)}/${h.data.slice(2,4)} · ${esc(h.motivo)}</span></div>`; }).join('')}</div>
+      return `<div class="row"><span class="t">${num(h.arv)} árvores</span><span class="a ${d<0?'down':d>0?'up':''}">${d==null?'':(d>0?'+':'')+num(d)}</span><span class="s">${fdata(h.data)}/${h.data.slice(2,4)} · ${esc(h.motivo)}${sel.hist.length>1?` · ${acoes('contagens', h.id)}`:''}</span></div>`; }).join('')}</div>
   </section>`:''}
   <section class="card sec">
     <h3>Cadastrar</h3>
@@ -277,7 +307,7 @@ floresta(){
   </section>
   <section class="card sec"><h3>Últimos apontamentos</h3><div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais);
     return `<div class="row"><span class="t">${x.k} · ${esc(tx?.nome)}</span><span class="a">${x.k==='Estria'?num(x.qtd)+' árv.':num(x.kg)+' kg'}</span>
-    <span class="s">${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.map(r=>esc(r.cod)).join(', ')}${x.k==='Estria'?` · ${esc(x.resineiro)} · ${num(x.qtd/x.dias)} estrias/dia`:''}</span></div>`; }).join('')}</div></section>`;
+    <span class="s">${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.map(r=>esc(r.cod)).join(', ')}${x.k==='Estria'?` · ${esc(x.resineiro)} · ${num(x.qtd/x.dias)} estrias/dia`:''} · ${acoes(x.k==='Estria'?'estrias':'coletas', x.id)}</span></div>`; }).join('')}</div></section>`;
   }
 
   // estrias: situação e intervalo realizado vs ideal por ramal
@@ -355,7 +385,7 @@ producao(){
   </section>
   <section class="card sec">
     <div class="sec-h"><h3>Últimas coletas</h3><button type="button" class="btn sm" data-goap="coleta">Apontar coleta por ramal</button></div>
-    <div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais); return `<div class="row"><span class="t">${esc(tx?.nome)}</span><span class="a">${num(x.kg)} kg</span><span class="s">Coleta de ${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.length+' ramais'}</span></div>`; }).join('')}</div>
+    <div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais); return `<div class="row"><span class="t">${esc(tx?.nome)}</span><span class="a">${num(x.kg)} kg</span><span class="s">Coleta de ${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.length+' ramais'} · ${acoes('coletas', x.id)}</span></div>`; }).join('')}</div>
   </section>`;
 },
 
@@ -411,6 +441,14 @@ vendas(){
         <span class="s">${fdata(v.data)} · ${num(v.kg)} kg a ${brl(v.preco)} · livre <b class="liv">${brl(livreV(v))}/kg</b> <span class="${dif>=0?'up':'down'}">(${dif>=0?'+':''}${num(dif,1)}% vs média)</span></span>
         <span class="pills">${pillNf(v)}${pillRec(v)}</span></summary>
       <div class="det">
+        ${editando('vendas',v.id)?`<form class="fEdVenda box" data-id="${v.id}" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="full">Comprador<input name="comprador" value="${esc(v.comprador)}" required></label>
+          <label>Quantidade (kg)<input name="kg" type="number" min="1" inputmode="numeric" value="${v.kg}" required></label>
+          <label>Preço por kg (R$)<input name="preco" type="number" step="0.01" min="0.01" inputmode="decimal" value="${v.preco}" required></label>
+          <label>Data da venda<input name="data" type="date" value="${v.data}" required></label>
+          <label>Previsão de recebimento<input name="venc" type="date" value="${v.venc||''}"></label>
+          <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`
+        :`<span class="note">Venda: ${acoes('vendas', v.id, {editar:true, aviso:v.recs.length?'Os recebimentos desta venda também serão apagados.':''})}</span>`}
         ${mod('nfe')?`<div class="steps">
           <span class="step done">1 · Venda</span>
           <span class="step ${!v.comNota?'skip':v.nf?'done':''}">2 · NF-e</span>
@@ -428,7 +466,7 @@ vendas(){
           <div class="rec"><span>Valor bruto (NF)</span><b>${brl(totalV(v))}</b></div>
           <div class="rec"><span>Retenção ${v.fator===REG.folha.f?'folha':'Funrural'}</span><b class="down">− ${brl(totalV(v)-liqV(v))}</b></div>
           <div class="rec"><span>Recebido</span><b>${brl(recV(v))} de ${brl(liqV(v))}</b></div>
-          ${v.recs.map(r=>`<div class="rec"><span>${fdata(r.data)} · ${esc(r.forma)}</span><b>${brl(r.valor)}</b></div>`).join('')}
+          ${v.recs.map(r=>`<div class="rec"><span>${fdata(r.data)} · ${esc(r.forma)} · ${acoes('recebimentos', r.id)}</span><b>${brl(r.valor)}</b></div>`).join('')}
           ${st!=='ok' ? `<span class="note">Previsão do saldo: <b>${fdata(v.venc||T0)}</b></span>
           <form class="fRec" data-id="${v.id}" style="margin-top:4px">
             <label>Data<input name="d" type="date" value="${T0}" required></label>

@@ -61,4 +61,25 @@ function dadosParaLinhas(d, fid){
   };
 }
 
-export { montarDados, dadosParaLinhas, linha };
+/* registros ligados a uma fazenda ou a um talhão, para apagar em lote */
+const ativosDe = (L, tabela, campo, ids) => ativas(L, tabela).filter(l=>ids.has(l[campo]));
+function linhasDoTalhao(L, tid){
+  const t = new Set([tid]);
+  const ramais = ativosDe(L,'ramais','talhao_id',t), rids = new Set(ramais.map(r=>r.id));
+  return [['talhoes',tid], ...ramais.map(r=>['ramais',r.id]), ...ativosDe(L,'contagens','ramal_id',rids).map(c=>['contagens',c.id]),
+    ...ativosDe(L,'estrias','talhao_id',t).map(e=>['estrias',e.id]), ...ativosDe(L,'coletas','talhao_id',t).map(c=>['coletas',c.id])];
+}
+function linhasDaFazenda(L, fid){
+  const f = new Set([fid]);
+  const tals = ativosDe(L,'talhoes','fazenda_id',f), vendas = ativosDe(L,'vendas','fazenda_id',f), vids = new Set(vendas.map(v=>v.id));
+  const doTalhao = tals.flatMap(t=>linhasDoTalhao(L, t.id));
+  const visto = new Set(doTalhao.map(([t,id])=>t+id));
+  const soltas = ['estrias','coletas'].flatMap(tab=>ativosDe(L,tab,'fazenda_id',f).filter(l=>!visto.has(tab+l.id)).map(l=>[tab,l.id]));
+  return [...doTalhao, ...soltas, ...vendas.map(v=>['vendas',v.id]), ...ativosDe(L,'recebimentos','venda_id',vids).map(r=>['recebimentos',r.id]),
+    ...['lancamentos','compromissos','compradores'].flatMap(tab=>ativosDe(L,tab,'fazenda_id',f).map(l=>[tab,l.id]))];
+}
+/* fazendas do usuário no formato das telas */
+const fazendasDe = L => ativas(L,'fazendas').sort((a,b)=>porCod(a.nome,b.nome)).map(f=>({id:f.id, nome:f.nome, ie:f.ie, doc:f.doc, municipio:f.municipio, uf:f.uf,
+  demo:f.demo, demo_gerado_em:f.demo_gerado_em, _erro:f._erro, dados:montarDados(L, f.id)}));
+
+export { montarDados, dadosParaLinhas, linha, linhasDaFazenda, linhasDoTalhao, fazendasDe };

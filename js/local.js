@@ -8,36 +8,42 @@ function abrir(userId, arm=armPadrao()){
   let d = null;
   try { d = JSON.parse(arm.getItem(PREFIXO+userId)); } catch(e) {}
   d ||= {linhas:{}, fila:[], cursor:{}};
-  return {userId, arm, linhas:d.linhas, fila:d.fila, cursor:d.cursor};
+  return {userId, arm, linhas:d.linhas, fila:d.fila, cursor:d.cursor, meta:d.meta||{}};
 }
 function persistir(L){
-  try { L.arm.setItem(PREFIXO+L.userId, JSON.stringify({linhas:L.linhas, fila:L.fila, cursor:L.cursor})); } catch(e) {}
+  try { L.arm.setItem(PREFIXO+L.userId, JSON.stringify({linhas:L.linhas, fila:L.fila, cursor:L.cursor, meta:L.meta})); } catch(e) {}
 }
 const naFila = (L, tabela, id) => L.fila.some(([t,i])=>t===tabela && i===id);
 
 /* grava (mesclando com o que já existe) e enfileira para envio; regravar limpa um erro antigo */
-function gravar(L, tabela, linha){
+function guardar(L, tabela, linha){
   const tab = L.linhas[tabela] ??= {};
   const nova = {...tab[linha.id], ...linha};
   delete nova._erro;
   tab[linha.id] = nova;
   if (!naFila(L, tabela, linha.id)) L.fila.push([tabela, linha.id]);
-  persistir(L);
   return nova;
 }
+function gravar(L, tabela, linha){ const n = guardar(L, tabela, linha); persistir(L); return n; }
+/* muitas linhas de uma vez (ex.: dados de exemplo), salvando o cache uma vez só */
+function gravarLote(L, itens){ for (const [t,l] of itens) guardar(L, t, l); persistir(L); }
 /* exclusão lógica: o registro continua existindo com deleted_at, para a exclusão chegar aos outros aparelhos */
-function excluir(L, tabela, id){
-  if (!L.linhas[tabela]?.[id]) return;
-  gravar(L, tabela, {id, deleted_at:new Date().toISOString()});
+function excluir(L, tabela, id){ excluirLote(L, [[tabela, id]]); }
+function excluirLote(L, itens){
+  const agora = new Date().toISOString();
+  gravarLote(L, itens.filter(([t,id])=>L.linhas[t]?.[id]).map(([t,id])=>[t, {id, deleted_at:agora}]));
 }
+function definirMeta(L, meta){ Object.assign(L.meta, meta); persistir(L); }
 /* linhas que chegaram do servidor; o que ainda está na fila é mais novo e fica */
 function mesclar(L, tabela, remotas){
   const tab = L.linhas[tabela] ??= {};
+  let n = 0;
   for (const r of remotas) {
-    if (!naFila(L, tabela, r.id)) tab[r.id] = r;
+    if (!naFila(L, tabela, r.id)) { tab[r.id] = r; n++; }
     if (!L.cursor[tabela] || r.updated_at > L.cursor[tabela]) L.cursor[tabela] = r.updated_at;
   }
   persistir(L);
+  return n;
 }
 const pendentes = L => L.fila.length;
 function tirarDaFila(L, tabela, ids){
@@ -56,4 +62,4 @@ const erros = L => Object.entries(L.linhas).flatMap(([tabela,tab])=>Object.value
 const ultimoUsuario = (arm=armPadrao()) => { try { return arm.getItem(PREFIXO+'ultimo'); } catch(e) { return null; } };
 const definirUltimo = (userId, arm=armPadrao()) => { try { userId ? arm.setItem(PREFIXO+'ultimo', userId) : arm.removeItem(PREFIXO+'ultimo'); } catch(e) {} };
 
-export { abrir, gravar, excluir, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };
+export { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };

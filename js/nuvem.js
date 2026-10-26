@@ -45,6 +45,7 @@ function criarNuvem(cliente, L){
   }
   /* traz tudo o que mudou desde a última busca, tabela por tabela */
   async function buscar(){
+    let mudou = 0;
     for (const tabela of ORDEM) {
       const todas = [];
       for (let de=0; ; de+=PAGINA) {
@@ -57,9 +58,9 @@ function criarNuvem(cliente, L){
         todas.push(...res.data);
         if (res.data.length < PAGINA) break;
       }
-      if (todas.length) mesclar(L, tabela, todas);
+      if (todas.length) mudou += mesclar(L, tabela, todas);
     }
-    return {offline:false};
+    return {offline:false, mudou};
   }
   let rodando = null;
   /* envia e depois busca; chamadas simultâneas reaproveitam a mesma execução */
@@ -69,7 +70,7 @@ function criarNuvem(cliente, L){
         const r = await enviar();
         if (r.offline || r.sessao===false) return {ok:false, ...r};
         const b = await buscar();
-        return {ok:!b.offline && b.sessao!==false, offline:!!b.offline, sessao:b.sessao, erros:erros(L).length};
+        return {ok:!b.offline && b.sessao!==false, offline:!!b.offline, sessao:b.sessao, mudou:b.mudou||0, erros:erros(L).length};
       } finally { rodando = null; }
     })();
   }

@@ -58,7 +58,8 @@ test('IE já usada em outra conta: a fazenda fica com erro e o resto segue', asy
 test('busca em páginas de 1000 e avança o cursor', async () => {
   const L = novoL();
   const linhas = { fazendas: Array.from({ length: 1003 }, (_, i) => ({ id: 'f' + i, nome: 'F', updated_at: `2026-10-26T10:00:${String(i % 60).padStart(2, '0')}.${String(i).padStart(4, '0')}Z` })) };
-  await criarNuvem(clienteFalso({ linhas }), L).buscar();
+  const r = await criarNuvem(clienteFalso({ linhas }), L).buscar();
+  assert.equal(r.mudou, 1003);
   assert.equal(ativas(L, 'fazendas').length, 1003);
   assert.equal(L.cursor.fazendas, linhas.fazendas.map(f => f.updated_at).sort().at(-1));
 });

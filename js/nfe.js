@@ -1,6 +1,7 @@
-import { brl, num, esc, hoje } from './util.js';
-import { totalV, chave, S, dados } from './regras.js';
-import { salvar, fazAtual, E } from './estado.js';
+import { brl, num, esc, hoje, uid } from './util.js';
+import { totalV, chave, S } from './regras.js';
+import { salvarLote, fazAtual, SES, E } from './estado.js';
+import { linha } from './mapa.js';
 
 /* ---------- NF-e (simulada) ---------- */
 function proxNumero(){ return S.vendas.reduce((m,v)=>v.nf? Math.max(m,v.nf.numero):m,0)+1; }
@@ -94,10 +95,11 @@ function abrirEmissao(id){
     if(!docEl.value.trim()){ docEl.focus(); return; }
     const d=soDig(docEl.value);
     if(d.length===14 && !cnpjValido(d)){ aviso('CNPJ inválido: confira os números digitados.',true); docEl.focus(); return; }
-    v.nf={numero:proxNumero(),serie:1,data:q('#nfData').value,doc:mascaraDoc(d),dest,
+    const nf={numero:proxNumero(),serie:1,data:q('#nfData').value,doc:mascaraDoc(d),dest,
           cfop:q('#nfCfop').value,chave:chave(),protocolo:'1352'+Date.now().toString().slice(-11)};
-    S.compradores[v.comprador]={doc:mascaraDoc(d),dest};
-    salvar(); E.aberta=v.id; dlg.close();
+    const comp={id:conhecido?.id||uid(), doc:mascaraDoc(d), dest};
+    E.aberta=v.id; dlg.onclose=null; dlg.close();
+    salvarLote([['vendas',{id:v.id, nf}], ['compradores', linha.comprador(v.comprador, comp, SES.fid)]]);
   });
 }
 

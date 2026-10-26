@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoria } from './apoio.js';
-import { abrir, gravar, excluir, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo } from '../js/local.js';
+import { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo } from '../js/local.js';
 
 const faz = (id, extra) => ({ id, nome: 'Fazenda', ie: '12345678', uf: 'PR', ...extra });
 
@@ -68,4 +68,30 @@ test('cada usuário tem seu próprio cache no mesmo aparelho', () => {
   assert.ok(abrir('A', arm).linhas.fazendas.fa);
   definirUltimo('A', arm);
   assert.equal(ultimoUsuario(arm), 'A');
+});
+
+test('gravar em lote salva uma vez só e enfileira tudo', () => {
+  const arm = memoria(); let escritas = 0;
+  const contado = { ...arm, setItem: (k, v) => { escritas++; arm.setItem(k, v); } };
+  const L = abrir('u1', contado);
+  gravarLote(L, [['fazendas', faz('f1')], ['talhoes', { id: 't1', fazenda_id: 'f1', nome: 'A' }]]);
+  assert.equal(escritas, 1);
+  assert.equal(pendentes(L), 2);
+  assert.ok(abrir('u1', arm).linhas.talhoes.t1);
+});
+
+test('excluir em lote marca todos os registros', () => {
+  const L = abrir('u1', memoria());
+  gravarLote(L, [['talhoes', { id: 't1', nome: 'A' }], ['ramais', { id: 'r1', cod: 'R-01' }]]);
+  excluirLote(L, [['talhoes', 't1'], ['ramais', 'r1'], ['ramais', 'inexistente']]);
+  assert.deepEqual(ativas(L, 'talhoes'), []);
+  assert.deepEqual(ativas(L, 'ramais'), []);
+  assert.equal(L.linhas.ramais.inexistente, undefined);
+});
+
+test('dados da conta (e-mail) ficam guardados para abrir sem rede', () => {
+  const arm = memoria();
+  const L = abrir('u1', arm);
+  definirMeta(L, { email: 'a@b.com' });
+  assert.equal(abrir('u1', arm).meta.email, 'a@b.com');
 });
