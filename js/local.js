@@ -45,6 +45,12 @@ function mesclar(L, tabela, remotas){
   persistir(L);
   return n;
 }
+/* apagados já enviados não precisam ficar no aparelho (a busca só traz o que mudou depois do cursor) */
+function compactar(L){
+  for (const [tabela, tab] of Object.entries(L.linhas))
+    for (const [id, l] of Object.entries(tab)) if (l.deleted_at && !naFila(L, tabela, id)) delete tab[id];
+  persistir(L);
+}
 const pendentes = L => L.fila.length;
 function tirarDaFila(L, tabela, ids){
   const s = new Set(ids);
@@ -62,4 +68,4 @@ const erros = L => Object.entries(L.linhas).flatMap(([tabela,tab])=>Object.value
 const ultimoUsuario = (arm=armPadrao()) => { try { return arm.getItem(PREFIXO+'ultimo'); } catch(e) { return null; } };
 const definirUltimo = (userId, arm=armPadrao()) => { try { userId ? arm.setItem(PREFIXO+'ultimo', userId) : arm.removeItem(PREFIXO+'ultimo'); } catch(e) {} };
 
-export { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };
+export { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, compactar, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };

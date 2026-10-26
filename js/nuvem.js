@@ -1,6 +1,6 @@
 /* ---------- Supabase: login e sincronização do cache local ---------- */
 import { SUPABASE_URL, SUPABASE_ANON } from './config.js';
-import { mesclar, tirarDaFila, marcarErro, erros } from './local.js';
+import { mesclar, tirarDaFila, marcarErro, erros, compactar } from './local.js';
 
 /* pais antes dos filhos, por causa das chaves estrangeiras */
 const ORDEM = ['perfis','fazendas','talhoes','ramais','contagens','estrias','coletas','vendas','recebimentos','lancamentos','compromissos','compradores'];
@@ -37,6 +37,7 @@ function criarNuvem(cliente, L){
       for (const row of rows) {
         const e1 = await upsert(tabela, [row]);
         if (!e1) tirarDaFila(L, tabela, [row.id]);
+        else if (e1.code==='23503') continue;   // o registro pai ainda não está no banco (ex.: fazenda com erro): espera na fila
         else if (ehDeDado(e1)) marcarErro(L, tabela, row.id, mensagem(tabela, e1));
         else return {offline:!ehSessao(e1), sessao:!ehSessao(e1), erros:erros(L).length};
       }
@@ -70,6 +71,7 @@ function criarNuvem(cliente, L){
         const r = await enviar();
         if (r.offline || r.sessao===false) return {ok:false, ...r};
         const b = await buscar();
+        if (!b.offline && b.sessao!==false) compactar(L);
         return {ok:!b.offline && b.sessao!==false, offline:!!b.offline, sessao:b.sessao, mudou:b.mudou||0, erros:erros(L).length};
       } finally { rodando = null; }
     })();

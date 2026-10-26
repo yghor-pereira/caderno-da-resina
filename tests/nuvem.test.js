@@ -73,3 +73,29 @@ test('erro de formato do PostgREST marca o registro em vez de tentar para sempre
   assert.equal(pendentes(L), 0);
   assert.match(L.linhas.talhoes.t1._erro, /coluna_que_nao_existe/);
 });
+
+test('registro cujo pai ainda não chegou ao banco espera na fila (não vira erro)', async () => {
+  const L = novoL();
+  gravar(L, 'fazendas', { id: 'f1', nome: 'Repetida', ie: '111', uf: 'PR' });
+  gravar(L, 'talhoes', { id: 't1', fazenda_id: 'f1', nome: 'A' });
+  const upsert = async (t, rows) => t === 'fazendas' ? { error: { code: '23505', message: 'duplicate' } }
+    : t === 'talhoes' ? { error: { code: '23503', message: 'violates foreign key constraint' } } : { error: null };
+  await criarNuvem(clienteFalso({ upsert }), L).enviar();
+  assert.equal(L.linhas.talhoes.t1._erro, undefined);
+  assert.deepEqual(L.fila, [['talhoes', 't1']]);
+  // corrigida a IE, a fazenda e o talhão sobem juntos
+  gravar(L, 'fazendas', { id: 'f1', ie: '222' });
+  const c = clienteFalso();
+  await criarNuvem(c, L).enviar();
+  assert.deepEqual(c.chamadas.map(([t]) => t), ['fazendas', 'talhoes']);
+  assert.equal(pendentes(L), 0);
+});
+
+test('depois de sincronizar, registros apagados já enviados saem do aparelho', async () => {
+  const L = novoL();
+  gravar(L, 'talhoes', { id: 't1', fazenda_id: 'f1', nome: 'A' });
+  gravar(L, 'talhoes', { id: 't2', fazenda_id: 'f1', nome: 'B', deleted_at: '2026-10-26T00:00:00Z' });
+  const linhas = { talhoes: [{ id: 't3', nome: 'C', deleted_at: '2026-10-26T00:00:00Z', updated_at: '2026-10-26T01:00:00Z' }] };
+  await criarNuvem(clienteFalso({ linhas }), L).sincronizar();
+  assert.deepEqual(Object.keys(L.linhas.talhoes).sort(), ['t1']);
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoria } from './apoio.js';
-import { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo } from '../js/local.js';
+import { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, compactar, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo } from '../js/local.js';
 
 const faz = (id, extra) => ({ id, nome: 'Fazenda', ie: '12345678', uf: 'PR', ...extra });
 
@@ -94,4 +94,13 @@ test('dados da conta (e-mail) ficam guardados para abrir sem rede', () => {
   const L = abrir('u1', arm);
   definirMeta(L, { email: 'a@b.com' });
   assert.equal(abrir('u1', arm).meta.email, 'a@b.com');
+});
+
+test('compactar remove do cache os apagados que não estão na fila', () => {
+  const L = abrir('u1', memoria());
+  gravar(L, 'talhoes', { id: 't1', nome: 'A', deleted_at: 'x' });
+  gravar(L, 'talhoes', { id: 't2', nome: 'B', deleted_at: 'x' }); tirarDaFila(L, 'talhoes', ['t2']);
+  gravar(L, 'talhoes', { id: 't3', nome: 'C' }); tirarDaFila(L, 'talhoes', ['t3']);
+  compactar(L);
+  assert.deepEqual(Object.keys(L.linhas.talhoes).sort(), ['t1', 't3']);
 });
