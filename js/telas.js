@@ -1,5 +1,5 @@
 import { brl, num, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, safraLbl, mIdx, sum } from './util.js';
-import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livre, arv, painT, talByNome, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
+import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
 import { MODS, MOD_PADRAO, DB, usuario, fazAtual, mod, CUR, E, EX } from './estado.js';
@@ -136,7 +136,7 @@ inicio(){
   <section class="sec">
     <div class="sec-h"><h2>Safra ${safraLbl(CUR)} até agora</h2></div>
     <div class="kpis">
-      ${mod('floresta')?`<div class="card kpi"><div class="l">Produtividade</div><div class="v">${num(T.kgPainel,2)} <small>kg/árvore</small></div></div>
+      ${mod('producao')?`<div class="card kpi"><div class="l">Produtividade</div><div class="v">${num(T.kgPainel,2)} <small>kg/árvore</small></div></div>
       <div class="card kpi"><div class="l">Por estria</div><div class="v">${num(T.kgEstria*1000,0)} <small>g/estria</small></div></div>`:''}
       ${mod('caixa')?`<div class="card kpi"><div class="l">Saldo em caixa</div><div class="v ${saldoAtual()>=0?'up':'down'}">${brl(saldoAtual())}</div></div>
       <div class="card kpi"><div class="l">Menor saldo previsto (6 meses)</div><div class="v ${minS>=0?'':'down'}">${brl(minS)}</div></div>`:''}
@@ -192,10 +192,10 @@ caixa(){
 
 floresta(){
   const T0=hoje();
-  E.talSel = talByNome(E.talSel)? E.talSel : S.talhoes[0]?.nome;
-  const t=talByNome(E.talSel);
+  E.talSel = talById(E.talSel)? E.talSel : S.talhoes[0]?.id;
+  const t=talById(E.talSel);
   const sub = `<div class="seg">${[['ramais','Talhões e ramais'],['apontar','Apontar'],['estrias','Estrias']].map(([k,l])=>`<button type="button" data-fl="${k}" aria-pressed="${E.flMode===k}">${l}</button>`).join('')}</div>`;
-  const chipsTal = (attr='tal', sel=E.talSel) => `<div class="chips">${S.talhoes.map(x=>`<button type="button" data-${attr}="${esc(x.nome)}" aria-pressed="${x.nome===sel}">${esc(x.nome)}</button>`).join('')}</div>`;
+  const chipsTal = (attr='tal', sel=E.talSel) => `<div class="chips">${S.talhoes.map(x=>`<button type="button" data-${attr}="${x.id}" aria-pressed="${x.id===sel}">${esc(x.nome)}</button>`).join('')}</div>`;
   const nRam = sum(S.talhoes,x=>x.ramais.length);
   const head = `
   <section class="sec">
@@ -238,18 +238,20 @@ floresta(){
     ${t?`<form id="fRam">
       <label>Novo ramal em ${esc(t.nome)}<input id="rCod" placeholder="Ex.: R-${String(t.ramais.length+1).padStart(2,'0')}" value="R-${String(t.ramais.length+1).padStart(2,'0')}" required></label>
       <label>Árvores contadas<input id="rArv" type="number" min="1" inputmode="numeric" required></label>
+      <p class="err full" id="rErr" hidden></p>
       <button class="btn full">Adicionar ramal</button>
     </form>`:''}
     <form id="fTal">
       <label class="full">Novo talhão<input id="tNome" placeholder="Ex.: Talhão D" required></label>
+      <p class="err full" id="tErr" hidden></p>
       <button class="btn full ghost">Adicionar talhão</button>
     </form>
   </section>`;
   }
 
   if (E.flMode==='apontar') {
-    E.apTal = talByNome(E.apTal)? E.apTal : E.talSel;
-    const ta=talByNome(E.apTal), rs=ta? ta.ramais.map(r=>ramStats(ta,r)) : [];
+    E.apTal = talById(E.apTal)? E.apTal : E.talSel;
+    const ta=talById(E.apTal), rs=ta? ta.ramais.map(r=>ramStats(ta,r)) : [];
     if (!E.apSel) E.apSel = new Set(rs.filter(s=> E.opTipo==='coleta' || s.desde==null || s.desde>=S.ideal-2).map(s=>s.r.id));
     const recent=[...S.estrias.map(e=>({...e,k:'Estria'})),...S.producao.map(p=>({...p,k:'Coleta'}))].sort((a,b)=>b.data.localeCompare(a.data)).slice(0,8);
     return head + `
@@ -273,8 +275,8 @@ floresta(){
       <button class="btn full">${E.opTipo==='estria'?'Registrar estria':'Registrar coleta'}</button>
     </form>`:'<p class="note">Cadastre talhões e ramais primeiro.</p>'}
   </section>
-  <section class="card sec"><h3>Últimos apontamentos</h3><div class="list">${recent.map(x=>{ const tx=talByNome(x.talhao), rr=ramsDe(tx,x.ramais);
-    return `<div class="row"><span class="t">${x.k} · ${esc(x.talhao)}</span><span class="a">${x.k==='Estria'?num(x.qtd)+' árv.':num(x.kg)+' kg'}</span>
+  <section class="card sec"><h3>Últimos apontamentos</h3><div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais);
+    return `<div class="row"><span class="t">${x.k} · ${esc(tx?.nome)}</span><span class="a">${x.k==='Estria'?num(x.qtd)+' árv.':num(x.kg)+' kg'}</span>
     <span class="s">${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.map(r=>esc(r.cod)).join(', ')}${x.k==='Estria'?` · ${esc(x.resineiro)} · ${num(x.qtd/x.dias)} estrias/dia`:''}</span></div>`; }).join('')}</div></section>`;
   }
 
@@ -320,8 +322,8 @@ producao(){
   const acum = y => { const m=Array(12).fill(0); S.producao.filter(inSafra(y)).forEach(p=>m[mIdx(p.data)]+=p.kg);
     const lim = y===CUR? mIdx(hoje()) : 11; let a=0; return m.map((v,i)=>{ a+=v; return i>lim? null : (pain? a/pain:0); }); };
   const temPrev = S.producao.some(inSafra(E.safraSel-1));
-  const porT = S.talhoes.map(t=>{ const kg=sum(S.producao.filter(p=>p.talhao===t.nome&&safraIni(p.data)===E.safraSel),p=>p.kg);
-    const ne=sum(S.estrias.filter(e=>e.talhao===t.nome&&safraIni(e.data)===E.safraSel),e=>e.qtd);
+  const porT = S.talhoes.map(t=>{ const kg=sum(S.producao.filter(p=>p.talhao===t.id&&safraIni(p.data)===E.safraSel),p=>p.kg);
+    const ne=sum(S.estrias.filter(e=>e.talhao===t.id&&safraIni(e.data)===E.safraSel),e=>e.qtd);
     return {t,kg,kgP:painT(t)?kg/painT(t):0,gE:ne?kg/ne*1000:0}; });
   const recent=[...S.producao].sort((a,b)=>b.data.localeCompare(a.data)).slice(0,6);
   return `
@@ -351,10 +353,9 @@ producao(){
     ${porT.map(r=>`<tr><td>${esc(r.t.nome)}</td><td>${num(painT(r.t))}</td><td>${num(r.kg)}</td><td><b>${num(r.kgP,2)}</b></td><td>${num(r.gE)}</td></tr>`).join('')}
     </tbody></table></div>
   </section>
-  </section>
   <section class="card sec">
     <div class="sec-h"><h3>Últimas coletas</h3><button type="button" class="btn sm" data-goap="coleta">Apontar coleta por ramal</button></div>
-    <div class="list">${recent.map(x=>{ const tx=talByNome(x.talhao), rr=ramsDe(tx,x.ramais); return `<div class="row"><span class="t">${esc(x.talhao)}</span><span class="a">${num(x.kg)} kg</span><span class="s">Coleta de ${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.length+' ramais'}</span></div>`; }).join('')}</div>
+    <div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais); return `<div class="row"><span class="t">${esc(tx?.nome)}</span><span class="a">${num(x.kg)} kg</span><span class="s">Coleta de ${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.length+' ramais'}</span></div>`; }).join('')}</div>
   </section>`;
 },
 
@@ -370,7 +371,7 @@ vendas(){
     <div class="card sec">
       <h3>Como você contribui para a Previdência?</h3>
       <div class="seg">${Object.entries(REG).map(([k,r])=>`<button type="button" data-reg="${k}" aria-pressed="${S.regime===k}">${r.nome}</button>`).join('')}</div>
-      <p class="note">${REG[S.regime].nome}: ${REG[S.regime].desc}. Preço livre = preço de venda × ${num(fat(),4)}. É o valor que cai na conta e o que o app usa para recebimentos, fluxo de caixa e margem.</p>
+      <p class="note">${REG[S.regime].nome}: ${REG[S.regime].desc}. Preço livre = preço de venda × ${num(fat(),4)}. É o valor que cai na conta e o que o app usa para recebimentos, fluxo de caixa e margem. Vale para as próximas vendas. As vendas já registradas mantêm o desconto da época.</p>
     </div>
     <div class="kpis">
       <div class="card kpi"><div class="l">Preço médio da safra</div><div class="v">${brl(T.precoMedio)}<small>/kg</small></div></div>
@@ -382,7 +383,7 @@ vendas(){
   </section>
   <section class="card sec">
     <h3>Preço de cada venda</h3>
-    ${vs.length? chart({title:'Preço por venda',labels:vs.map(v=>fdata(v.data)),lines:[{vals:vs.map(v=>v.preco),color:'var(--muted)',dots:true},{vals:vs.map(v=>livre(v.preco)),color:'var(--pine)',dots:true}],refs:[{v:T.precoLivre,color:'var(--amber)'}],fmtL:v=>num(v,2),h:170})
+    ${vs.length? chart({title:'Preço por venda',labels:vs.map(v=>fdata(v.data)),lines:[{vals:vs.map(v=>v.preco),color:'var(--muted)',dots:true},{vals:vs.map(v=>livreV(v)),color:'var(--pine)',dots:true}],refs:[{v:T.precoLivre,color:'var(--amber)'}],fmtL:v=>num(v,2),h:170})
       + legend([{c:'var(--muted)',t:'Preço de venda',ln:1},{c:'var(--pine)',t:'Preço livre',ln:1},{c:'var(--amber)',t:`Média livre da safra ${brl(T.precoLivre)}`,dash:1}])
       : '<p class="note">Nenhuma venda nesta safra.</p>'}
   </section>
@@ -391,8 +392,8 @@ vendas(){
     <form id="fVenda">
       <label class="full">Comprador<input id="vComp" list="comps" required placeholder="Ex.: Resinas Vale Sul"></label>
       <datalist id="comps">${[...new Set(S.vendas.map(v=>v.comprador))].map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
-      <label>Quantidade (kg)<input id="vKg" type="number" min="0" inputmode="numeric" required></label>
-      <label>Preço por kg (R$)<input id="vPreco" type="number" step="0.01" min="0" inputmode="decimal" value="${MERCADO.resina.v.toFixed(2)}" required></label>
+      <label>Quantidade (kg)<input id="vKg" type="number" min="1" inputmode="numeric" required></label>
+      <label>Preço por kg (R$)<input id="vPreco" type="number" step="0.01" min="0.01" inputmode="decimal" value="${MERCADO.resina.v.toFixed(2)}" required></label>
       <label>Data da venda<input id="vData" type="date" value="${T0}" required></label>
       ${mod('nfe')?`<label>Nota fiscal<select id="vNota"><option value="1">Com NF-e</option><option value="0">Sem nota</option></select></label>`:''}
       <label>Pagamento<select id="vRec"><option value="0">A receber depois</option><option value="1">Recebido na hora</option></select></label>
@@ -403,11 +404,11 @@ vendas(){
     <p class="note">Fluxo: <b>registrar a venda</b> → ${mod('nfe')?'<b>emitir a NF-e</b> (quando houver nota) → ':''}<b>registrar o recebimento</b>. O saldo a receber entra no fluxo de caixa previsto.</p>
   </section>
   <section class="card list" style="padding-block:2px">${[...vs].reverse().map(v=>{
-    const st=statusRec(v), pct=Math.min(100,recV(v)/liqV(v)*100), dif=T.precoLivre?(livre(v.preco)/T.precoLivre-1)*100:0;
+    const st=statusRec(v), pct=pctRec(v), dif=T.precoLivre?(livreV(v)/T.precoLivre-1)*100:0;
     return `
     <details class="venda" ${v.id===E.aberta?'open':''} data-venda="${v.id}">
       <summary><span class="t">${esc(v.comprador)}</span><span class="a">${brl(liqV(v))}<br><small class="note" style="font-weight:400">líquido</small></span>
-        <span class="s">${fdata(v.data)} · ${num(v.kg)} kg a ${brl(v.preco)} · livre <b class="liv">${brl(livre(v.preco))}/kg</b> <span class="${dif>=0?'up':'down'}">(${dif>=0?'+':''}${num(dif,1)}% vs média)</span></span>
+        <span class="s">${fdata(v.data)} · ${num(v.kg)} kg a ${brl(v.preco)} · livre <b class="liv">${brl(livreV(v))}/kg</b> <span class="${dif>=0?'up':'down'}">(${dif>=0?'+':''}${num(dif,1)}% vs média)</span></span>
         <span class="pills">${pillNf(v)}${pillRec(v)}</span></summary>
       <div class="det">
         ${mod('nfe')?`<div class="steps">
@@ -425,7 +426,7 @@ vendas(){
         <div class="box"><h3>Recebimento</h3>
           <div class="prog"><i style="width:${pct}%"></i></div>
           <div class="rec"><span>Valor bruto (NF)</span><b>${brl(totalV(v))}</b></div>
-          <div class="rec"><span>Retenção ${S.regime==='funrural'?'Funrural':'folha'}</span><b class="down">− ${brl(totalV(v)-liqV(v))}</b></div>
+          <div class="rec"><span>Retenção ${v.fator===REG.folha.f?'folha':'Funrural'}</span><b class="down">− ${brl(totalV(v)-liqV(v))}</b></div>
           <div class="rec"><span>Recebido</span><b>${brl(recV(v))} de ${brl(liqV(v))}</b></div>
           ${v.recs.map(r=>`<div class="rec"><span>${fdata(r.data)} · ${esc(r.forma)}</span><b>${brl(r.valor)}</b></div>`).join('')}
           ${st!=='ok' ? `<span class="note">Previsão do saldo: <b>${fdata(v.venc||T0)}</b></span>

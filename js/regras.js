@@ -26,14 +26,18 @@ const REG = {
   folha:{f:0.998, nome:'Folha de pagamento', desc:'retenção de 0,2% na venda'}
 };
 const fat = () => (REG[S.regime]||REG.funrural).f;
-const liqV = v => r2(totalV(v)*fat());          // preço livre × kg = o que cai na conta
+/* cada venda guarda o fator do regime da época: trocar o regime só vale para vendas novas */
+const liqV = v => r2(totalV(v)*v.fator);          // preço livre × kg = o que cai na conta
+const livreV = v => v.preco*v.fator;
 const livre = p => p*fat();
+const pctRec = v => liqV(v) ? Math.min(100, recV(v)/liqV(v)*100) : 0;
 
 /* ---------- floresta: talhões → ramais (contagem de árvores com histórico) ---------- */
 const arv = r => r.hist.at(-1).arv;
 const contData = r => r.hist.at(-1).data;
 const painT = t => sum(t.ramais, arv);
 const talByNome = n => S.talhoes.find(t=>t.nome===n);
+const talById = id => S.talhoes.find(t=>t.id===id);
 const ramsDe = (t,ids) => (ids||[]).map(id=>t?.ramais.find(r=>r.id===id)).filter(Boolean);
 
 /* ---------- dados da fazenda aberta ---------- */
@@ -73,12 +77,12 @@ function fluxo(meses=6){
 }
 /* kg de uma coleta rateado entre os ramais coletados, pelo nº de árvores */
 function kgRamal(t, r, filtro){
-  return sum(S.producao.filter(p=>p.talhao===t.nome && p.ramais?.includes(r.id) && filtro(p)), p=>{
+  return sum(S.producao.filter(p=>p.talhao===t.id && p.ramais?.includes(r.id) && filtro(p)), p=>{
     const tt=sum(ramsDe(t,p.ramais),arv); return tt? p.kg*arv(r)/tt : 0; });
 }
 function ramStats(t, r, y=safraIni(hoje())){
   const T0=hoje();
-  const es=S.estrias.filter(e=>e.talhao===t.nome && e.ramais?.includes(r.id)).sort((a,b)=>a.data.localeCompare(b.data));
+  const es=S.estrias.filter(e=>e.talhao===t.id && e.ramais?.includes(r.id)).sort((a,b)=>a.data.localeCompare(b.data));
   const ult=es.at(-1)?.data||null, desde=ult?diff(ult,T0):null;
   const cur=es.filter(inSafra(y)), ints=cur.slice(1).map((e,i)=>diff(cur[i].data,e.data));
   const kg=kgRamal(t,r,inSafra(y));
@@ -99,4 +103,4 @@ function statusTalhoes(){
   });
 }
 
-export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livre, arv, contData, painT, talByNome, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };
+export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };

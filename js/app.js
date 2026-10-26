@@ -1,5 +1,5 @@
 import { brl, num, esc, uid, hoje, safraIni, sum } from './util.js';
-import { saldoV, REG, liqV, livre, arv, talByNome, ramsDe, S, usarDados, dados } from './regras.js';
+import { saldoV, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S, usarDados, dados } from './regras.js';
 import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, hashS, DB, salvar, usuario, fazAtual, mod, vazio, CUR, E, EX, garantirExemplo } from './estado.js';
 import { soDig, abrirEmissao } from './nfe.js';
@@ -115,18 +115,21 @@ app.addEventListener('submit',e=>{
     render(); return; }
   if(f==='fCaixa'){ const it={id:uid(),data:$('cData').value,tipo:E.tipoLanc,cat:$('cCat').value,desc:$('cDesc').value.trim(),valor:+$('cValor').value};
     (E.modoCaixa==='real'?S.caixa:S.comp).push(it); }
-  if(f==='fAp'){ const t=talByNome(E.apTal), ids=[...E.apSel];
+  if(f==='fAp'){ const t=talById(E.apTal), ids=[...E.apSel];
     if(!ids.length){ document.getElementById('apSum').innerHTML='<span class="down">Marque ao menos um ramal.</span>'; return; }
-    if(E.opTipo==='estria') S.estrias.push({id:uid(),data:$('aData').value,talhao:t.nome,ramais:ids,qtd:sum(ramsDe(t,ids),arv),dias:+$('aDias').value,resineiro:$('aRes').value.trim()});
-    else S.producao.push({id:uid(),data:$('aData').value,talhao:t.nome,ramais:ids,kg:+$('aKg').value});
+    if(E.opTipo==='estria') S.estrias.push({id:uid(),data:$('aData').value,talhao:t.id,ramais:ids,qtd:sum(ramsDe(t,ids),arv),dias:+$('aDias').value,resineiro:$('aRes').value.trim()});
+    else S.producao.push({id:uid(),data:$('aData').value,talhao:t.id,ramais:ids,kg:+$('aKg').value});
     E.apSel=null; }
-  if(f==='fTal'){ const nome=$('tNome').value.trim(); if(!talByNome(nome)){ S.talhoes.push({id:uid(),nome,ramais:[]}); E.talSel=nome; } }
-  if(f==='fRam'){ const t=talByNome(E.talSel); t.ramais.push({id:uid(),cod:$('rCod').value.trim(),hist:[{data:hoje(),arv:+$('rArv').value,motivo:'Contagem inicial'}]}); }
-  if(f==='fCont'){ const t=talByNome(E.talSel), r=t?.ramais.find(x=>x.id===E.ramSel);
-    if(r){ r.hist.push({data:$('kData').value,arv:+$('kArv').value,motivo:$('kMot').value}); r.hist.sort((a,b)=>a.data.localeCompare(b.data)); } }
-  if(f==='fFlo'){ S.floresta=$('fNome').value.trim(); }
+  if(f==='fTal'){ const nome=$('tNome').value.trim();
+    if(talByNome(nome)){ const err=$('tErr'); err.textContent='Já existe um talhão com esse nome.'; err.hidden=false; return; }
+    const t={id:uid(),nome,ramais:[]}; S.talhoes.push(t); E.talSel=t.id; }
+  if(f==='fRam'){ const t=talById(E.talSel), cod=$('rCod').value.trim();
+    if(t.ramais.some(r=>r.cod===cod)){ const err=$('rErr'); err.textContent='Já existe um ramal com esse código neste talhão.'; err.hidden=false; return; }
+    t.ramais.push({id:uid(),cod,hist:[{id:uid(),data:hoje(),arv:+$('rArv').value,motivo:'Contagem inicial'}]}); }
+  if(f==='fCont'){ const t=talById(E.talSel), r=t?.ramais.find(x=>x.id===E.ramSel);
+    if(r){ r.hist.push({id:uid(),data:$('kData').value,arv:+$('kArv').value,motivo:$('kMot').value}); r.hist.sort((a,b)=>a.data.localeCompare(b.data)); } }
   if(f==='fVenda'){
-    const v={id:uid(),data:$('vData').value,comprador:$('vComp').value.trim(),kg:+$('vKg').value,preco:+$('vPreco').value,
+    const v={id:uid(),data:$('vData').value,comprador:$('vComp').value.trim(),kg:+$('vKg').value,preco:+$('vPreco').value,fator:fat(),
       comNota:mod('nfe')&&$('vNota')?.value==='1',nf:null,recs:[],venc:$('vVenc').value||hoje()};
     if($('vRec').value==='1') v.recs.push({id:uid(),data:v.data,valor:liqV(v),forma:'Dinheiro'});
     S.vendas.push(v); E.aberta=v.id; E.safraSel=safraIni(v.data); salvar(); render();
@@ -140,7 +143,7 @@ app.addEventListener('submit',e=>{
   salvar(); render();
 });
 function syncAp(){
-  const t=talByNome(E.apTal), box=document.getElementById('apSum'); if(!t||!box) return;
+  const t=talById(E.apTal), box=document.getElementById('apSum'); if(!t||!box) return;
   E.apSel=new Set([...document.querySelectorAll('#fAp input[name=ram]:checked')].map(c=>c.value));
   const rr=ramsDe(t,[...E.apSel]), a=sum(rr,arv);
   box.innerHTML = rr.length ? `<div class="rec"><span>${rr.length} de ${t.ramais.length} ramais</span><b>${num(a)} árvores${E.opTipo==='estria'?' = '+num(a)+' estrias':''}</b></div>` : '<span class="note">Nenhum ramal marcado.</span>';

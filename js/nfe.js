@@ -1,6 +1,6 @@
 import { brl, num, esc, hoje } from './util.js';
 import { totalV, chave, S, dados } from './regras.js';
-import { salvar, E } from './estado.js';
+import { salvar, fazAtual, E } from './estado.js';
 
 /* ---------- NF-e (simulada) ---------- */
 function proxNumero(){ return S.vendas.reduce((m,v)=>v.nf? Math.max(m,v.nf.numero):m,0)+1; }
@@ -51,14 +51,13 @@ function abrirEmissao(id){
         <dt>Número</dt><dd>${proxNumero()} · série 1</dd></dl>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <label>Sua UF<select id="nfUfProd"><option value="">—</option>${UFS.map(u=>`<option ${S.uf===u?'selected':''}>${u}</option>`).join('')}</select></label>
       <label>Data de emissão<input id="nfData" type="date" value="${hoje()}" required></label>
       <label style="grid-column:1/-1">Operação (CFOP)<select id="nfCfop"><option value="5101">5101 · venda dentro do estado</option><option value="6101">6101 · venda para outro estado</option></select></label>
     </div>
     <div class="acts"><button type="button" class="btn sm ghost" id="nfCancel">Cancelar</button><button class="btn sm">Transmitir NF-e</button></div>
   </form>`;
   const q=sel=>dlg.querySelector(sel), docEl=q('#nfDoc'), box=q('#nfDest'), btn=q('#nfBuscar');
-  const ajustaCfop=()=>{ if(dest?.uf && S.uf) q('#nfCfop').value = dest.uf===S.uf ? '5101':'6101'; };
+  const ajustaCfop=()=>{ const uf=fazAtual()?.uf; if(dest?.uf && uf) q('#nfCfop').value = dest.uf===uf ? '5101':'6101'; };
   const mostra=()=>{
     if(!dest){ box.innerHTML=''; return; }
     const ativa=!dest.situacao || /ATIVA/i.test(dest.situacao);
@@ -86,7 +85,6 @@ function abrirEmissao(id){
   }
   docEl.addEventListener('input',()=>{ docEl.value=mascaraDoc(docEl.value); if(soDig(docEl.value).length===14) consultar(); });
   btn.onclick=consultar;
-  q('#nfUfProd').onchange=e=>{ S.uf=e.target.value; salvar(); ajustaCfop(); };
   mostra();
   dlg.onclose=()=>E.render();
   dlg.showModal();
