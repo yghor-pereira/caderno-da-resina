@@ -98,10 +98,15 @@ function criarNuvem(cliente, L, {ativo=()=>true}={}){
 
 /* ---------- cliente real e login ---------- */
 const CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-let cliente = null;
-async function conectar(){
+let cliente = null, falhou = false;
+/* o navegador guarda o import que falhou (ex.: app aberto sem sinal) e repete o erro sem tentar de novo;
+   depois de uma falha, pede a biblioteca por outro endereço. O sw.js responde os dois com o mesmo arquivo.
+   importar só é trocado nos testes. */
+async function conectar(importar = u => import(u)){
   if (cliente) return cliente;
-  const { createClient } = await import(CDN);
+  let createClient;
+  try { ({ createClient } = await importar(falhou ? CDN+'?r='+Date.now() : CDN)); }
+  catch(e) { falhou = true; throw e; }
   cliente = createClient(SUPABASE_URL, SUPABASE_ANON, {auth:{persistSession:true, autoRefreshToken:true, storageKey:'caderno-resina-auth'}});
   return cliente;
 }
@@ -152,4 +157,4 @@ async function ieDisponivel(ie, ignorar){
   } catch(e) { return null; }   // sem rede: não dá para saber agora
 }
 
-export { ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };
+export { CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };

@@ -2,7 +2,7 @@ import { brl, num, esc, uid, hoje, safraIni, sum } from './util.js';
 import { saldoV, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S } from './regras.js';
 import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, usarFazendaId,
-  salvar, salvarLote, apagar, limparFazenda, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
+  salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
 import { ultimoUsuario } from './local.js';
 import { linha, linhasDoTalhao } from './mapa.js';
 import { entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
@@ -238,7 +238,8 @@ function syncVenda(){
 app.addEventListener('input',e=>{ if(e.target.id==='vKg'||e.target.id==='vPreco') syncVenda(); });
 
 /* sincroniza ao voltar a conexão, ao voltar para a aba e a cada minuto com a aba visível */
-window.addEventListener('online',()=>sincronizar());
+/* a rede pode demorar uns segundos para funcionar depois do aviso de conexão: tenta mais uma vez */
+window.addEventListener('online',async()=>{ if((await sincronizar()).offline) agendar(5000); });
 window.addEventListener('offline',()=>{ if(SES.L){ SES.sync='offline'; mostrarSync(); } });
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && SES.L) sincronizar(); });
 setInterval(()=>{ if(document.visibilityState==='visible' && SES.L) sincronizar(); }, 60000);

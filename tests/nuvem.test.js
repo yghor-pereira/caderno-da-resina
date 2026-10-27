@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoria, clienteFalso } from './apoio.js';
 import { abrir, gravar, pendentes, ativas, cursorDe } from '../js/local.js';
-import { criarNuvem, classificarSessao, PAGINA, depoisDe } from '../js/nuvem.js';
+import { criarNuvem, classificarSessao, conectar, CDN, PAGINA, depoisDe } from '../js/nuvem.js';
 
 const novoL = () => abrir('user-1', memoria());
 
@@ -195,4 +195,17 @@ test('classificarSessao separa sessão válida, sem rede e sem sessão', () => {
   assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthRetryableFetchError', message: 'Failed to fetch' } }), 'offline');
   assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthApiError', status: 400, message: 'Invalid Refresh Token' } }), 'nenhuma');
   assert.equal(classificarSessao({ data: { session: null }, error: null }), 'nenhuma');
+});
+
+test('depois de falhar ao carregar a biblioteca (sem sinal), tenta de novo por outro endereço', async () => {
+  const pedidos = [];
+  const semRede = async u => { pedidos.push(u); throw new TypeError('Failed to fetch dynamically imported module'); };
+  await assert.rejects(conectar(semRede));
+  await assert.rejects(conectar(semRede));
+  const comRede = async u => { pedidos.push(u); return { createClient: () => ({ auth: {} }) }; };
+  assert.ok(await conectar(comRede));
+  assert.equal(pedidos[0], CDN);
+  assert.match(pedidos[1], /\?r=\d+$/);
+  assert.match(pedidos[2], /\?r=\d+$/);
+  assert.ok(pedidos[2].startsWith(CDN + '?r='));
 });
