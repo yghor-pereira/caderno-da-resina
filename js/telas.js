@@ -1,5 +1,5 @@
 import { brl, num, plural, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, safraLbl, mIdx, sum } from './util.js';
-import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
+import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
 import { MODS, MOD_PADRAO, usuario, fazAtual, mod, CUR, E, EX, SES, nPendentes, listaErros } from './estado.js';
@@ -135,7 +135,7 @@ inicio(){
   const mesAtual=new Date().getMonth(), ini='JFMAMJJASOND';
   const alertas=[
     ...(mod('nfe')&&nfPend()?[`<div><span><b>${plural(nfPend(),'venda','vendas')}</b> aguardando emissão de NF-e</span></div>`]:[]),
-    ...(mod('floresta')?atrasados:[]).map(s=>`<div style="--c:${s.atraso>4?'var(--bad)':'var(--amber)'}"><span><b>${esc(s.t.nome)}</b>: ${plural(s.atrasados.length,'ramal','ramais')} com estria atrasada (até ${plural(s.atraso,'dia','dias')})</span></div>`),
+    ...(mod('floresta')?atrasados:[]).map(s=>`<div style="--c:${s.atraso>ATRASO_CRITICO?'var(--bad)':'var(--amber)'}"><span><b>${esc(s.t.nome)}</b>: ${plural(s.atrasados.length,'ramal','ramais')} com estria atrasada (até ${plural(s.atraso,'dia','dias')})</span></div>`),
     ...(mod('floresta')?st.filter(s=>s.contVelha):[]).map(s=>`<div style="--c:var(--muted)"><span><b>${esc(s.t.nome)}</b>: ${plural(s.contVelha,'ramal','ramais')} sem recontagem de árvores há mais de 6 meses</span></div>`),
     ...(mod('caixa')?prox:[]).map(c=>`<div style="--c:${c.tipo==='d'?'var(--bad)':'var(--good)'}"><span>${fdata(c.data)} · ${esc(c.desc)}: <b>${c.tipo==='d'?'−':'+'} ${brl(c.valor)}</b></span></div>`)
   ];
@@ -226,7 +226,7 @@ floresta(){
     <div class="sec-h"><h2>Floresta · ${esc(fazAtual()?.nome||'')}</h2><span class="tag">${plural(S.talhoes.length,'talhão','talhões')} · ${plural(nRam,'ramal','ramais')} · ${plural(totPaineis(),'árvore','árvores')}</span></div>
     ${sub}
   </section>`;
-  const situ = s => s.ult==null ? '<span class="pill sem">Sem estria</span>' : s.atraso>0 ? `<span class="pill ${s.atraso>4?'late':'pend'}">${s.atraso}d atraso</span>` : '<span class="pill ok">Em dia</span>';
+  const situ = s => s.ult==null ? '<span class="pill sem">Sem estria</span>' : s.atraso>0 ? `<span class="pill ${s.atraso>ATRASO_CRITICO?'late':'pend'}">${s.atraso}d atraso</span>` : '<span class="pill ok">Em dia</span>';
 
   if (E.flMode==='ramais') {
     const rs = t? t.ramais.map(r=>ramStats(t,r)) : [];
@@ -320,9 +320,9 @@ floresta(){
     <div class="sec-h"><h3>Situação por talhão</h3>
       <label style="flex-direction:row;align-items:center;gap:6px">Intervalo ideal <input id="ideal" type="number" min="7" max="30" value="${S.ideal}" style="width:64px;padding:6px"> dias</label></div>
     <div class="tstat">${st.map(s=>`
-      <div class="card tst ${s.atraso>4?'crit':s.atraso>0?'late':''}">
+      <div class="card tst ${s.atraso>ATRASO_CRITICO?'crit':s.atraso>0?'late':''}">
         <h3>${esc(s.t.nome)} <span class="note" style="font-weight:400">· ${plural(s.t.ramais.length,'ramal','ramais')} · ${num(painT(s.t))} árv.</span></h3>
-        <div class="big">${s.ult==null?'<span class="note">Sem estrias</span>': s.atrasados.length?`<span class="${s.atraso>4?'down':'warn'}">${plural(s.atrasados.length,'ramal atrasado','ramais atrasados')}</span>`:'<span class="up">Em dia</span>'}</div>
+        <div class="big">${s.ult==null?'<span class="note">Sem estrias</span>': s.atrasados.length?`<span class="${s.atraso>ATRASO_CRITICO?'down':'warn'}">${plural(s.atrasados.length,'ramal atrasado','ramais atrasados')}</span>`:'<span class="up">Em dia</span>'}</div>
         ${s.ult?`<span class="note">${s.atrasados.length?`Maior atraso: <b>${plural(s.atraso,'dia','dias')}</b> · `:''}Próxima estria: <b>${fdata(s.prox)}</b></span>
         <span class="note">Intervalo médio na safra: <b class="${s.medio>S.ideal+1?'warn':''}">${s.medio?num(s.medio,1):'–'} dias</b> vs ${S.ideal} ideal</span>`:''}
       </div>`).join('')}</div>
@@ -330,8 +330,8 @@ floresta(){
   <section class="card sec">
     <div class="sec-h"><h3>Intervalo médio por ramal vs ideal</h3>${chipsSafra()}</div>
     ${chipsTal()}
-    ${rsSel.some(s=>s.medio!=null)? chart({title:'Intervalo médio por ramal',labels:rsSel.map(s=>s.r.cod.replace('R-','')),bars:[{vals:rsSel.map(s=>s.medio),color:'var(--pine)',cols:rsSel.map(s=>s.medio>S.ideal+2?'var(--bad)':s.medio>S.ideal?'var(--amber)':'var(--pine)')}],refs:[{v:S.ideal,color:'var(--fg)'}],fmtL:v=>num(v)+'d',h:170})
-      + legend([{c:'var(--pine)',t:'No prazo'},{c:'var(--amber)',t:'Até 2 dias acima'},{c:'var(--bad)',t:'Mais de 2 dias acima'},{c:'var(--fg)',t:`Ideal (${S.ideal} dias)`,dash:1}])
+    ${rsSel.some(s=>s.medio!=null)? chart({title:'Intervalo médio por ramal',labels:rsSel.map(s=>s.r.cod.replace('R-','')),bars:[{vals:rsSel.map(s=>s.medio),color:'var(--pine)',cols:rsSel.map(s=>s.medio>S.ideal+ATRASO_CRITICO?'var(--bad)':s.medio>S.ideal?'var(--amber)':'var(--pine)')}],refs:[{v:S.ideal,color:'var(--fg)'}],fmtL:v=>num(v)+'d',h:170})
+      + legend([{c:'var(--pine)',t:'No prazo'},{c:'var(--amber)',t:`Até ${plural(ATRASO_CRITICO,'dia','dias')} acima`},{c:'var(--bad)',t:`Mais de ${plural(ATRASO_CRITICO,'dia','dias')} acima`},{c:'var(--fg)',t:`Ideal (${S.ideal} dias)`,dash:1}])
       : '<p class="note">Registre ao menos duas estrias nos ramais deste talhão para ver os intervalos.</p>'}
   </section>
   <section class="card sec">

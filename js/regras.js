@@ -13,6 +13,8 @@ const DICAS = [
 const SAFRA = [1,.95,.8,.55,.3,.15,.12,.2,.45,.7,.9,1];   // jan→dez
 const CATS_D = ['Mão de obra','Pasta estimulante','Sacos e materiais','Combustível/frete','Arrendamento','Outros'];
 const CATS_R = ['Venda de resina','Outras receitas'];
+/* atraso de estria (dias além do intervalo ideal) que deixa alertas, cartões e gráfico em vermelho */
+const ATRASO_CRITICO = 4;
 const FORMAS = ['Pix','Transferência','Boleto','Dinheiro','Cheque'];
 const totalV = v => v.kg*v.preco;
 const recV = v => sum(v.recs||[], r=>r.valor);
@@ -105,4 +107,4 @@ function statusTalhoes(){
   });
 }
 
-export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, abaixoDoRecebido, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };
+export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, abaixoDoRecebido, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };
