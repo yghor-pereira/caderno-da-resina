@@ -57,7 +57,7 @@ conta(){
   const u=usuario(), fe=u.fazendas.find(f=>f.id===E.fazEdit), erros=listaErros();
   return `
   <section class="sec">
-    <h2>Minha conta</h2>
+    <div class="sec-h"><h2>Minha conta</h2>${SES.fid?'':'<button type="button" class="btn sm ghost" data-ir="fazendas">Minhas fazendas</button>'}</div>
     <div class="card sec"><form id="fUser">
       <label>Nome<input id="uNome" value="${esc(u.nome)}" required></label>
       <label>E-mail<input value="${esc(u.email)}" disabled></label>

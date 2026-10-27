@@ -111,6 +111,7 @@ app.addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
   const d=b.dataset;
   if(d.faz){ usarFazenda(d.faz); }
+  else if(d.ir){ ir(d.ir); }
   else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; render(); }
   else if(d.demo){ b.disabled=true; b.textContent='Entrando…';
     try { await aposLogin(await entrar(EX.email, EX.senha)); }
