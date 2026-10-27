@@ -1,4 +1,4 @@
-import { brl, num, esc, uid, hoje, safraIni, sum } from './util.js';
+import { brl, num, plural, esc, uid, hoje, safraIni, sum } from './util.js';
 import { saldoV, recV, abaixoDoRecebido, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S } from './regras.js';
 import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, usarFazendaId,
@@ -232,7 +232,7 @@ function syncAp(){
   const t=talById(E.apTal), box=document.getElementById('apSum'); if(!t||!box) return;
   E.apSel=new Set([...document.querySelectorAll('#fAp input[name=ram]:checked')].map(c=>c.value));
   const rr=ramsDe(t,[...E.apSel]), a=sum(rr,arv);
-  box.innerHTML = rr.length ? `<div class="rec"><span>${rr.length} de ${t.ramais.length} ramais</span><b>${num(a)} árvores${E.opTipo==='estria'?' = '+num(a)+' estrias':''}</b></div>` : '<span class="note">Nenhum ramal marcado.</span>';
+  box.innerHTML = rr.length ? `<div class="rec"><span>${rr.length} de ${plural(t.ramais.length,'ramal','ramais')}</span><b>${plural(a,'árvore','árvores')}${E.opTipo==='estria'?' = '+plural(a,'estria','estrias'):''}</b></div>` : '<span class="note">Nenhum ramal marcado.</span>';
 }
 function syncVenda(){
   const box=document.getElementById('vPrev'); if(!box) return;

@@ -1,4 +1,4 @@
-import { brl, num, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, safraLbl, mIdx, sum } from './util.js';
+import { brl, num, plural, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, safraLbl, mIdx, sum } from './util.js';
 import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
@@ -47,7 +47,7 @@ fazendas(){
     <h2>Olá, ${esc(u.nome.split(' ')[0])}. Qual fazenda?</h2>
     ${fs.length?`<div class="fzs">
       ${fs.length>1?`<button type="button" class="card fz geral" data-faz="todas"><b>Visão geral</b><span class="note">As ${fs.length} fazendas consolidadas</span></button>`:''}
-      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${esc(f.uf)}</span><span class="note">${f.dados.talhoes.length} talhões · ${num(sum(f.dados.talhoes,painT))} árvores</span></button>`).join('')}
+      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${esc(f.uf)}</span><span class="note">${plural(f.dados.talhoes.length,'talhão','talhões')} · ${plural(sum(f.dados.talhoes,painT),'árvore','árvores')}</span></button>`).join('')}
     </div>`:'<p class="note">Cadastre sua primeira fazenda para começar. Cada fazenda corresponde a uma Inscrição Estadual.</p>'}
   </section>
   <section class="card sec">${fazForm(null)}</section>`;
@@ -120,7 +120,7 @@ geral(){
     <div class="tbl"><table><thead><tr><th>Fazenda</th><th>kg safra</th><th>kg/árv.</th><th>Preço livre</th><th>Lucro</th><th>Saldo</th><th>A receber</th><th>Alertas</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td><button type="button" class="lnk" data-faz="${r.f.id}">${esc(r.f.nome)}</button></td><td>${num(r.T.kgProd)}</td><td>${num(r.arv?r.T.kgProd/r.arv:0,2)}</td><td>${brl(r.T.precoLivre)}</td>
       <td class="${r.T.lucro>=0?'up':'down'}">${brl(r.T.lucro)}</td><td>${brl(r.saldo)}</td><td>${brl(r.aRec)}</td>
-      <td>${[r.atras?`<span class="pill pend">${r.atras} ramais atrasados</span>`:'', r.nfp&&mod('nfe')?`<span class="pill nfp">${r.nfp} NF-e</span>`:''].join('')||'—'}</td></tr>`).join('')}
+      <td>${[r.atras?`<span class="pill pend">${plural(r.atras,'ramal atrasado','ramais atrasados')}</span>`:'', r.nfp&&mod('nfe')?`<span class="pill nfp">${r.nfp} NF-e</span>`:''].join('')||'—'}</td></tr>`).join('')}
     <tr><td><b>Total</b></td><td><b>${num(kg)}</b></td><td><b>${num(arvs?kg/arvs:0,2)}</b></td><td><b>${brl(kgV?liq/kgV:0)}</b></td><td><b>${brl(lucro)}</b></td><td><b>${brl(saldo)}</b></td><td><b>${brl(aRec)}</b></td><td></td></tr>
     </tbody></table></div>
     <p class="note">A visão geral só consulta. Para lançar dados, toque no nome da fazenda. Os registros de cada fazenda continuam separados.</p>
@@ -134,9 +134,9 @@ inicio(){
   const minS=Math.min(...fx.map(f=>f.saldo));
   const mesAtual=new Date().getMonth(), ini='JFMAMJJASOND';
   const alertas=[
-    ...(mod('nfe')&&nfPend()?[`<div><span><b>${nfPend()} venda${nfPend()>1?'s':''}</b> aguardando emissão de NF-e</span></div>`]:[]),
-    ...(mod('floresta')?atrasados:[]).map(s=>`<div style="--c:${s.atraso>4?'var(--bad)':'var(--amber)'}"><span><b>${esc(s.t.nome)}</b>: ${s.atrasados.length} ramal${s.atrasados.length>1?'is':''} com estria atrasada (até ${s.atraso} dias)</span></div>`),
-    ...(mod('floresta')?st.filter(s=>s.contVelha):[]).map(s=>`<div style="--c:var(--muted)"><span><b>${esc(s.t.nome)}</b>: ${s.contVelha} ramal${s.contVelha>1?'is':''} sem recontagem de árvores há mais de 6 meses</span></div>`),
+    ...(mod('nfe')&&nfPend()?[`<div><span><b>${plural(nfPend(),'venda','vendas')}</b> aguardando emissão de NF-e</span></div>`]:[]),
+    ...(mod('floresta')?atrasados:[]).map(s=>`<div style="--c:${s.atraso>4?'var(--bad)':'var(--amber)'}"><span><b>${esc(s.t.nome)}</b>: ${plural(s.atrasados.length,'ramal','ramais')} com estria atrasada (até ${plural(s.atraso,'dia','dias')})</span></div>`),
+    ...(mod('floresta')?st.filter(s=>s.contVelha):[]).map(s=>`<div style="--c:var(--muted)"><span><b>${esc(s.t.nome)}</b>: ${plural(s.contVelha,'ramal','ramais')} sem recontagem de árvores há mais de 6 meses</span></div>`),
     ...(mod('caixa')?prox:[]).map(c=>`<div style="--c:${c.tipo==='d'?'var(--bad)':'var(--good)'}"><span>${fdata(c.data)} · ${esc(c.desc)}: <b>${c.tipo==='d'?'−':'+'} ${brl(c.valor)}</b></span></div>`)
   ];
   return `
@@ -223,7 +223,7 @@ floresta(){
   const nRam = sum(S.talhoes,x=>x.ramais.length);
   const head = `
   <section class="sec">
-    <div class="sec-h"><h2>Floresta · ${esc(fazAtual()?.nome||'')}</h2><span class="tag">${S.talhoes.length} talhões · ${nRam} ramais · ${num(totPaineis())} árvores</span></div>
+    <div class="sec-h"><h2>Floresta · ${esc(fazAtual()?.nome||'')}</h2><span class="tag">${plural(S.talhoes.length,'talhão','talhões')} · ${plural(nRam,'ramal','ramais')} · ${plural(totPaineis(),'árvore','árvores')}</span></div>
     ${sub}
   </section>`;
   const situ = s => s.ult==null ? '<span class="pill sem">Sem estria</span>' : s.atraso>0 ? `<span class="pill ${s.atraso>4?'late':'pend'}">${s.atraso}d atraso</span>` : '<span class="pill ok">Em dia</span>';
@@ -233,7 +233,7 @@ floresta(){
     const sel = t?.ramais.find(r=>r.id===E.ramSel);
     return head + `
   <section class="card sec">
-    <div class="sec-h"><h3>Ramais do talhão</h3>${t&&!editando('talhoes',t.id)?`<span class="note">${acoes('talhoes', t.id, {editar:true, aviso:`Excluir ${esc(t.nome)} apaga ${t.ramais.length} ramais, ${S.estrias.filter(e=>e.talhao===t.id).length} estrias e ${S.producao.filter(p=>p.talhao===t.id).length} coletas.`})}</span>`:''}</div>
+    <div class="sec-h"><h3>Ramais do talhão</h3>${t&&!editando('talhoes',t.id)?`<span class="note">${acoes('talhoes', t.id, {editar:true, aviso:`Excluir ${esc(t.nome)} apaga ${plural(t.ramais.length,'ramal','ramais')}, ${plural(S.estrias.filter(e=>e.talhao===t.id).length,'estria','estrias')} e ${plural(S.producao.filter(p=>p.talhao===t.id).length,'coleta','coletas')}.`})}</span>`:''}</div>
     ${chipsTal()}
     ${t&&editando('talhoes',t.id)?`<form id="fEdTal" data-id="${t.id}"><label class="full">Nome do talhão<input id="etNome" value="${esc(t.nome)}" required></label>
       <p class="err full" id="etErr" hidden></p>
@@ -321,9 +321,9 @@ floresta(){
       <label style="flex-direction:row;align-items:center;gap:6px">Intervalo ideal <input id="ideal" type="number" min="7" max="30" value="${S.ideal}" style="width:64px;padding:6px"> dias</label></div>
     <div class="tstat">${st.map(s=>`
       <div class="card tst ${s.atraso>4?'crit':s.atraso>0?'late':''}">
-        <h3>${esc(s.t.nome)} <span class="note" style="font-weight:400">· ${s.t.ramais.length} ramais · ${num(painT(s.t))} árv.</span></h3>
-        <div class="big">${s.ult==null?'<span class="note">Sem estrias</span>': s.atrasados.length?`<span class="${s.atraso>4?'down':'warn'}">${s.atrasados.length} ramal${s.atrasados.length>1?'is':''} atrasado${s.atrasados.length>1?'s':''}</span>`:'<span class="up">Em dia</span>'}</div>
-        ${s.ult?`<span class="note">${s.atrasados.length?`Maior atraso: <b>${s.atraso} dias</b> · `:''}Próxima estria: <b>${fdata(s.prox)}</b></span>
+        <h3>${esc(s.t.nome)} <span class="note" style="font-weight:400">· ${plural(s.t.ramais.length,'ramal','ramais')} · ${num(painT(s.t))} árv.</span></h3>
+        <div class="big">${s.ult==null?'<span class="note">Sem estrias</span>': s.atrasados.length?`<span class="${s.atraso>4?'down':'warn'}">${plural(s.atrasados.length,'ramal atrasado','ramais atrasados')}</span>`:'<span class="up">Em dia</span>'}</div>
+        ${s.ult?`<span class="note">${s.atrasados.length?`Maior atraso: <b>${plural(s.atraso,'dia','dias')}</b> · `:''}Próxima estria: <b>${fdata(s.prox)}</b></span>
         <span class="note">Intervalo médio na safra: <b class="${s.medio>S.ideal+1?'warn':''}">${s.medio?num(s.medio,1):'–'} dias</b> vs ${S.ideal} ideal</span>`:''}
       </div>`).join('')}</div>
   </section>
@@ -386,7 +386,7 @@ producao(){
   </section>
   <section class="card sec">
     <div class="sec-h"><h3>Últimas coletas</h3><button type="button" class="btn sm" data-goap="coleta">Apontar coleta por ramal</button></div>
-    <div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais); return `<div class="row"><span class="t">${esc(tx?.nome)}</span><span class="a">${num(x.kg)} kg</span><span class="s">Coleta de ${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':rr.length+' ramais'} · ${acoes('coletas', x.id)}</span></div>`; }).join('')}</div>
+    <div class="list">${recent.map(x=>{ const tx=talById(x.talhao), rr=ramsDe(tx,x.ramais); return `<div class="row"><span class="t">${esc(tx?.nome)}</span><span class="a">${num(x.kg)} kg</span><span class="s">Coleta de ${fdata(x.data)} · ${rr.length===tx?.ramais.length?'todos os ramais':plural(rr.length,'ramal','ramais')} · ${acoes('coletas', x.id)}</span></div>`; }).join('')}</div>
   </section>`;
 },
 
