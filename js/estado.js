@@ -23,7 +23,7 @@ usarDados(vazio());
 /* ---------- estado da tela ---------- */
 const CUR = safraIni(hoje());
 const E = {atual:'login', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null,
-  lMode:'entrar', fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
+  lMode:'entrar', lAviso:'', fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
   render:()=>{}, mostrarSync:()=>{}};
 
 /* ---------- sessão: usuário logado e o cache local dele ---------- */

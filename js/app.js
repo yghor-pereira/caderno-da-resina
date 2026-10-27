@@ -7,6 +7,7 @@ import { ultimoUsuario } from './local.js';
 import { linha, linhasDoTalhao } from './mapa.js';
 import { entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
 import { soDig, abrirEmissao } from './nfe.js';
+import { ieValida } from './ie.js';
 import { V } from './telas.js';
 
 function usarFazenda(fid){
@@ -110,7 +111,7 @@ app.addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
   const d=b.dataset;
   if(d.faz){ usarFazenda(d.faz); }
-  else if(d.lmode){ E.lMode=d.lmode; render(); }
+  else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; render(); }
   else if(d.demo){ b.disabled=true; b.textContent='Entrando…';
     try { await aposLogin(await entrar(EX.email, EX.senha)); }
     catch(err){ b.disabled=false; b.textContent='Entrar como exemplo'; const el=document.getElementById('lErr'); el.textContent=err.message; el.hidden=false; } }
@@ -155,19 +156,25 @@ app.addEventListener('change',e=>{
 app.addEventListener('submit',async e=>{
   e.preventDefault(); const $=id=>document.getElementById(id); const f=e.target.id, fid=SES.fid;
   const erro=(id,m)=>{ const el=$(id); el.textContent=m; el.hidden=false; };
-  if(f==='fLogin'){ const email=$('lEmail').value.trim().toLowerCase(), senha=$('lSenha').value, btn=e.target.querySelector('.btn');
+  if(f==='fLogin'){ E.lAviso=''; const email=$('lEmail').value.trim().toLowerCase(), senha=$('lSenha').value, btn=e.target.querySelector('.btn');
     btn.disabled=true;
     try {
       if(E.lMode==='entrar') return await aposLogin(await entrar(email, senha));
       const modulos=Object.fromEntries(MODS.map(m=>[m.k, !!e.target.querySelector(`input[name=mod][value="${m.k}"]`)?.checked]));
-      return await aposLogin(await cadastrar($('lNome').value.trim(), email, senha, modulos));
+      const u=await cadastrar($('lNome').value.trim(), email, senha, modulos);
+      if(u) return await aposLogin(u);
+      /* confirmação de e-mail ligada no Supabase: a conta só entra depois do link */
+      E.lMode='entrar'; E.emailPre=email; E.lAviso=`Enviamos um link para ${email}. Confirme e depois entre.`; return render();
     } catch(err){ btn.disabled=false; return erro('lErr', err.message); } }
   if(f==='fUser'){ salvar('perfis', {id:usuario().id, nome:$('uNome').value.trim()}); return; }
   if(f==='fFaz'){ const u=usuario(), id=e.target.dataset.id, ie=soDig($('zIe').value);
     if(ie.length<8 || ie.length>14) return erro('zErr','A Inscrição Estadual deve ter de 8 a 14 dígitos.');
+    /* só confere o dígito de IE nova ou alterada: a conta de exemplo usa IEs fictícias */
+    const antes=u.fazendas.find(z=>z.id===id), uf=$('zUf').value;
+    if((!antes || antes.ie!==ie || antes.uf!==uf) && !ieValida(ie, uf)) return erro('zErr',`Inscrição Estadual inválida para ${uf}.`);
     if(u.fazendas.some(z=>z.ie===ie && z.id!==id)) return erro('zErr','Você já tem uma fazenda com esta Inscrição Estadual.');
     if(await ieDisponivel(ie, id||null)===false) return erro('zErr','Esta Inscrição Estadual já está cadastrada em outra conta.');
-    const campos={nome:$('zNome').value.trim(), ie, doc:soDig($('zDoc').value), municipio:$('zMun').value.trim(), uf:$('zUf').value}, regime=$('zReg').value;
+    const campos={nome:$('zNome').value.trim(), ie, doc:soDig($('zDoc').value), municipio:$('zMun').value.trim(), uf}, regime=$('zReg').value;
     if(id){ E.fazEdit=null; salvar('fazendas', {id, ...campos, regime}); return; }
     const nova={id:uid(), ...campos};
     if($('zEx').checked) salvarLote(linhasExemplo(nova, exemplo(2+Math.floor(Math.random()*997), null, regime)));

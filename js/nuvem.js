@@ -105,6 +105,7 @@ function erroAuth(e){
   const m = (e?.message||'')+' '+(e?.code||'');
   if (/invalid.*credentials|invalid_credentials/i.test(m)) return 'E-mail ou senha incorretos.';
   if (/already.*registered|user_already_exists|already exists/i.test(m)) return 'Já existe uma conta com este e-mail. Use Entrar.';
+  if (/email.*not.*confirmed|email_not_confirmed/i.test(m)) return 'Confirme o seu e-mail pelo link que enviamos e depois entre.';
   if (/password/i.test(m) && /6|short|weak/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
   if (/fetch|network|load failed/i.test(m) || !navigator.onLine) return 'Sem internet: o primeiro acesso precisa de conexão.';
   return 'Não foi possível entrar agora ('+(e?.message||'erro')+').';
@@ -120,11 +121,13 @@ async function entrar(email, senha){
 async function cadastrar(nome, email, senha, modulos){
   try {
     const c = await conectar();
-    const { data, error } = await c.auth.signUp({email, password:senha, options:{data:{nome, modulos}}});
+    const volta = globalThis.location ? location.origin+location.pathname : undefined;   // o link do e-mail volta para o app
+    const { data, error } = await c.auth.signUp({email, password:senha, options:{data:{nome, modulos}, emailRedirectTo:volta}});
     if (error) throw error;
-    if (!data.session) throw new Error('Conta criada, mas sem sessão. Tente entrar.');
-    return data.user;
-  } catch(e) { throw new Error(e.message?.startsWith('Conta criada') ? e.message : erroAuth(e)); }
+    /* com confirmação ligada, e-mail já cadastrado volta sem identidades (o Supabase não dá erro) */
+    if (!data.session && data.user?.identities?.length===0) throw {code:'user_already_exists'};
+    return data.session ? data.user : null;   // null: falta confirmar o e-mail
+  } catch(e) { throw new Error(erroAuth(e)); }
 }
 async function sair(){ try { await (await conectar()).auth.signOut({scope:'local'}); } catch(e) {} }
 /* 'ok' com sessão válida; 'offline' quando não deu para falar com o servidor (renovar o acesso exige rede);
