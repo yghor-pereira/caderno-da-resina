@@ -1,11 +1,13 @@
 -- Caderno da Resina: ajustes da validação técnica (testes de 27/10)
 
+-- search_path vazio (alerta "function_search_path_mutable" do Supabase): a função não usa
+-- nenhuma tabela e clock_timestamp() vem de pg_catalog, que sempre é visível.
 -- updated_at com a hora do relógio no momento da gravação (clock_timestamp), e não a do início
 -- da transação (now()). Com now(), uma transação longa grava uma hora já ultrapassada pelo
 -- cursor dos aparelhos. O app pagina por (updated_at, id), então linhas com o mesmo instante
 -- (um upsert em lote) não se perdem entre páginas.
 create or replace function public.tocar_updated_at() returns trigger
-language plpgsql as $$
+language plpgsql set search_path = '' as $$
 begin
   new.updated_at := clock_timestamp();
   return new;
@@ -20,3 +22,10 @@ begin
     execute format('drop index if exists public.%I', t || '_sinc');
   end loop;
 end $$;
+
+-- criar_perfil() só roda pelo gatilho de auth.users; ninguém precisa chamá-la pela API
+-- (alerta "security definer function executable"). O gatilho continua funcionando.
+revoke execute on function public.criar_perfil() from public, anon, authenticated;
+
+-- ie_disponivel continua executável por authenticated de propósito: a RLS esconde as fazendas
+-- das outras contas e o app pergunta por aqui se a IE já está em uso (responde só sim ou não).
