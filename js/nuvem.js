@@ -1,6 +1,6 @@
 /* ---------- Supabase: login e sincronização do cache local ---------- */
 import { SUPABASE_URL, SUPABASE_ANON } from './config.js';
-import { mesclar, tirarDaFila, marcarErro, erros, compactar } from './local.js';
+import { cursorDe, mesclar, tirarDaFila, marcarErro, erros, compactar } from './local.js';
 
 /* pais antes dos filhos, por causa das chaves estrangeiras */
 const ORDEM = ['perfis','fazendas','talhoes','ramais','contagens','estrias','coletas','vendas','recebimentos','lancamentos','compromissos','compradores'];
@@ -13,6 +13,9 @@ function mensagem(tabela, e){
   if (e.code==='23505' && tabela==='fazendas') return 'Esta Inscrição Estadual já está cadastrada em outra conta.';
   return 'Não foi possível salvar: '+(e.message||e.code);
 }
+
+/* filtro do PostgREST para "depois do cursor": (updated_at > t) ou (updated_at = t e id > último id) */
+const depoisDe = c => `updated_at.gt."${c.t}",and(updated_at.eq."${c.t}",id.gt.${c.id})`;
 
 /* ativo(): falso quando o usuário saiu ou trocou; a sincronização para sem tocar no cache */
 function criarNuvem(cliente, L, {ativo=()=>true}={}){
@@ -54,24 +57,25 @@ function criarNuvem(cliente, L, {ativo=()=>true}={}){
     }
     return {offline:false, erros:erros(L).length};
   }
-  /* traz tudo o que mudou desde a última busca, tabela por tabela */
+  /* traz tudo o que mudou desde a última busca, tabela por tabela.
+     Paginação por chave (updated_at, id): várias linhas com o mesmo updated_at não se perdem
+     entre páginas, e uma linha alterada durante a busca só muda de lugar para depois do cursor. */
   async function buscar(){
     let mudou = 0;
     for (const tabela of ORDEM) {
-      const todas = [];
-      for (let de=0; ; de+=PAGINA) {
+      for (;;) {
+        const c = cursorDe(L, tabela);
         let q = cliente.from(tabela).select('*');
-        if (L.cursor[tabela]) q = q.gt('updated_at', L.cursor[tabela]);
+        if (c) q = c.id ? q.or(depoisDe(c)) : q.gte('updated_at', c.t);   // cursor antigo: repete as do mesmo instante
         let res;
         if (!ativo()) return {offline:false, parado:true};
-        try { res = await q.order('updated_at').range(de, de+PAGINA-1); }
+        try { res = await q.order('updated_at').order('id').limit(PAGINA); }
         catch(e) { return {offline:true}; }
         if (!ativo()) return {offline:false, parado:true};
         if (res.error) return ehSessao(res.error) ? {offline:false, sessao:false} : ehDeDado(res.error) ? {offline:false, erro:true} : {offline:true};
-        todas.push(...res.data);
+        if (res.data.length) mudou += mesclar(L, tabela, res.data);   // avança o cursor a cada página
         if (res.data.length < PAGINA) break;
       }
-      if (todas.length) mudou += mesclar(L, tabela, todas);
     }
     return {offline:false, mudou};
   }
@@ -148,4 +152,4 @@ async function ieDisponivel(ie, ignorar){
   } catch(e) { return null; }   // sem rede: não dá para saber agora
 }
 
-export { ORDEM, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };
+export { ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };

@@ -37,6 +37,12 @@ function definirMeta(L, meta){ Object.assign(L.meta, meta); persistir(L); }
 /* a versão do servidor traz só updated_at e user_id a mais quando nada mudou de fato */
 const igual = (local, remota) => !!local && Object.entries(remota).every(([k,v]) =>
   k==='updated_at' || k==='user_id' || JSON.stringify(v ?? null)===JSON.stringify(local[k] ?? null));
+/* cursor da busca: última linha recebida na ordem (updated_at, id).
+   Caches antigos guardavam só o texto de updated_at: vira {t, id:null}. */
+function cursorDe(L, tabela){
+  const c = L.cursor[tabela];
+  return typeof c==='string' ? {t:c, id:null} : c || null;
+}
 /* linhas que chegaram do servidor; o que ainda está na fila é mais novo e fica.
    Devolve quantas mudaram de verdade (as próprias gravações voltando não contam). */
 function mesclar(L, tabela, remotas){
@@ -44,7 +50,8 @@ function mesclar(L, tabela, remotas){
   let n = 0;
   for (const r of remotas) {
     if (!naFila(L, tabela, r.id)) { if (!igual(tab[r.id], r)) n++; tab[r.id] = r; }
-    if (!L.cursor[tabela] || r.updated_at > L.cursor[tabela]) L.cursor[tabela] = r.updated_at;
+    const c = cursorDe(L, tabela);
+    if (!c || r.updated_at > c.t || (r.updated_at===c.t && (c.id==null || r.id > c.id))) L.cursor[tabela] = {t:r.updated_at, id:r.id};
   }
   persistir(L);
   return n;
@@ -72,4 +79,4 @@ const erros = L => Object.entries(L.linhas).flatMap(([tabela,tab])=>Object.value
 const ultimoUsuario = (arm=armPadrao()) => { try { return arm.getItem(PREFIXO+'ultimo'); } catch(e) { return null; } };
 const definirUltimo = (userId, arm=armPadrao()) => { try { userId ? arm.setItem(PREFIXO+'ultimo', userId) : arm.removeItem(PREFIXO+'ultimo'); } catch(e) {} };
 
-export { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, compactar, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };
+export { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, compactar, cursorDe, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };

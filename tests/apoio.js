@@ -4,8 +4,9 @@ export const memoria = () => {
   return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
 };
 
-/* cliente com a interface usada do supabase-js; `upsert(tabela, linhas)` decide a resposta */
-export function clienteFalso({ upsert, linhas = {} } = {}) {
+/* cliente com a interface usada do supabase-js; `upsert(tabela, linhas)` decide a resposta;
+   `aoBuscar(tabela, página)` roda depois de cada página (para simular alterações durante a busca) */
+export function clienteFalso({ upsert, linhas = {}, aoBuscar } = {}) {
   const chamadas = [];
   return {
     chamadas,
@@ -13,14 +14,22 @@ export function clienteFalso({ upsert, linhas = {} } = {}) {
       return {
         upsert: async rows => { chamadas.push([t, rows]); return upsert ? upsert(t, rows) : { error: null }; },
         select() {
-          const q = { gt: null, a: 0, b: 999 };
+          const q = { filtro: () => true, n: Infinity };
           const b = {
-            gt(_c, v) { q.gt = v; return b; },
+            gte(_c, v) { q.filtro = r => r.updated_at >= v; return b; },
+            /* entende só o filtro de depoisDe(): updated_at.gt."t",and(updated_at.eq."t",id.gt.id) */
+            or(s) {
+              const [, t, id] = s.match(/^updated_at\.gt\."([^"]+)",and\(updated_at\.eq\."[^"]+",id\.gt\.([^)]+)\)$/);
+              q.filtro = r => r.updated_at > t || (r.updated_at === t && r.id > id); return b;
+            },
             order() { return b; },
-            range(a, z) { q.a = a; q.b = z; return b; },
+            limit(n) { q.n = n; return b; },
             then(res, rej) {
-              const todas = (linhas[t] || []).filter(r => !q.gt || r.updated_at > q.gt);
-              return Promise.resolve({ data: todas.slice(q.a, q.b + 1), error: null }).then(res, rej);
+              const ordem = (x, y) => x.updated_at < y.updated_at ? -1 : x.updated_at > y.updated_at ? 1 : x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+              const todas = (linhas[t] || []).filter(q.filtro).sort(ordem).slice(0, q.n).map(r => ({ ...r }));
+              const r = Promise.resolve({ data: todas, error: null });
+              aoBuscar?.(t, todas);
+              return r.then(res, rej);
             }
           };
           return b;

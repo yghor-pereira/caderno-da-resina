@@ -29,7 +29,7 @@ test('alteração local ainda não enviada vence a versão que chega do servidor
                          faz('f2', { nome: 'Nova', updated_at: '2026-10-26T11:00:00Z' })]);
   assert.equal(L.linhas.fazendas.f1.nome, 'Local');
   assert.equal(L.linhas.fazendas.f2.nome, 'Nova');
-  assert.equal(L.cursor.fazendas, '2026-10-26T11:00:00Z');
+  assert.deepEqual(L.cursor.fazendas, { t: '2026-10-26T11:00:00Z', id: 'f2' });
 });
 
 test('depois de enviado, o registro passa a aceitar a versão do servidor', () => {

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoria, clienteFalso } from './apoio.js';
-import { abrir, gravar, pendentes, ativas } from '../js/local.js';
-import { criarNuvem, classificarSessao } from '../js/nuvem.js';
+import { abrir, gravar, pendentes, ativas, cursorDe } from '../js/local.js';
+import { criarNuvem, classificarSessao, PAGINA, depoisDe } from '../js/nuvem.js';
 
 const novoL = () => abrir('user-1', memoria());
 
@@ -61,7 +61,51 @@ test('busca em páginas de 1000 e avança o cursor', async () => {
   const r = await criarNuvem(clienteFalso({ linhas }), L).buscar();
   assert.equal(r.mudou, 1003);
   assert.equal(ativas(L, 'fazendas').length, 1003);
-  assert.equal(L.cursor.fazendas, linhas.fazendas.map(f => f.updated_at).sort().at(-1));
+  const ultima = [...linhas.fazendas].sort((a, b) => a.updated_at.localeCompare(b.updated_at)).at(-1);
+  assert.deepEqual(L.cursor.fazendas, { t: ultima.updated_at, id: ultima.id });
+});
+
+const uuid = i => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+
+test('lote com o mesmo updated_at maior que uma página chega inteiro', async () => {
+  const L = novoL();
+  const t = '2026-10-27T12:00:00.123456+00:00';   // um upsert em lote grava tudo no mesmo instante
+  const linhas = { talhoes: Array.from({ length: PAGINA * 2 + 500 }, (_, i) => ({ id: uuid(i), nome: 'T' + i, updated_at: t })) };
+  const r = await criarNuvem(clienteFalso({ linhas }), L).buscar();
+  assert.equal(r.mudou, PAGINA * 2 + 500);
+  assert.equal(ativas(L, 'talhoes').length, PAGINA * 2 + 500);
+  assert.deepEqual(cursorDe(L, 'talhoes'), { t, id: uuid(PAGINA * 2 + 499) });
+});
+
+test('linha alterada durante a busca não é pulada', async () => {
+  const L = novoL();
+  const linhas = { talhoes: Array.from({ length: 1500 }, (_, i) => ({ id: uuid(i), nome: 'T' + i, updated_at: `2026-10-27T10:00:00.${String(i).padStart(6, '0')}+00:00` })) };
+  let paginas = 0;
+  /* depois da 1ª página, alguém altera a 1ª linha: ela passa para o fim da ordem */
+  const aoBuscar = () => { if (++paginas === 1) Object.assign(linhas.talhoes[0], { nome: 'Alterado', updated_at: '2026-10-27T11:00:00+00:00' }); };
+  await criarNuvem(clienteFalso({ linhas, aoBuscar }), L).buscar();
+  assert.equal(ativas(L, 'talhoes').length, 1500);
+  assert.equal(L.linhas.talhoes[uuid(0)].nome, 'Alterado');
+  assert.ok(L.linhas.talhoes[uuid(1000)], 'a linha que ficaria na virada da página também chega');
+});
+
+test('cursor antigo (só o texto da data) continua funcionando e passa a guardar o id', async () => {
+  const arm = memoria();
+  arm.setItem('caderno-resina-v2:user-1', JSON.stringify({ linhas: {}, fila: [], cursor: { talhoes: '2026-10-27T10:00:00+00:00' } }));
+  const L = abrir('user-1', arm);
+  assert.deepEqual(cursorDe(L, 'talhoes'), { t: '2026-10-27T10:00:00+00:00', id: null });
+  const linhas = { talhoes: [
+    { id: uuid(1), nome: 'Antes', updated_at: '2026-10-27T09:00:00+00:00' },
+    { id: uuid(2), nome: 'Mesmo instante', updated_at: '2026-10-27T10:00:00+00:00' },
+    { id: uuid(3), nome: 'Depois', updated_at: '2026-10-27T10:30:00+00:00' }] };
+  await criarNuvem(clienteFalso({ linhas }), L).buscar();
+  assert.deepEqual(Object.keys(L.linhas.talhoes).sort(), [uuid(2), uuid(3)]);
+  assert.deepEqual(L.cursor.talhoes, { t: '2026-10-27T10:30:00+00:00', id: uuid(3) });
+});
+
+test('filtro do cursor para o PostgREST', () => {
+  assert.equal(depoisDe({ t: '2026-10-27T10:00:00+00:00', id: uuid(7) }),
+    `updated_at.gt."2026-10-27T10:00:00+00:00",and(updated_at.eq."2026-10-27T10:00:00+00:00",id.gt.${uuid(7)})`);
 });
 
 test('erro de formato do PostgREST marca o registro em vez de tentar para sempre', async () => {
@@ -131,7 +175,7 @@ test('sessão vencida no envio um a um não marca erro nem tira da fila', async 
 test('busca que falha por erro de dado não conta como sincronização bem-sucedida', async () => {
   const L = novoL();
   const c = clienteFalso();
-  c.from = () => ({ select: () => { const b = { gt: () => b, order: () => b, range: () => b, then: (res) => Promise.resolve({ data: null, error: { code: '42P01', message: 'tabela' } }).then(res) }; return b; } });
+  c.from = () => ({ select: () => { const b = { gte: () => b, or: () => b, order: () => b, limit: () => b, then: (res) => Promise.resolve({ data: null, error: { code: '42P01', message: 'tabela' } }).then(res) }; return b; } });
   const r = await criarNuvem(c, L).sincronizar();
   assert.equal(r.ok, false);
 });
