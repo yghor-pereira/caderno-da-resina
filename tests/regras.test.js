@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { definirHoje } from '../js/util.js';
-import { usarDados, tot, statusTalhoes, fluxo, saldoAtual, liqV, saldoV, pctRec, ramStats, talById } from '../js/regras.js';
+import { usarDados, tot, statusTalhoes, fluxo, saldoAtual, liqV, saldoV, pctRec, ramStats, talById, abaixoDoRecebido } from '../js/regras.js';
 import { exemplo } from '../js/exemplo.js';
 
 beforeEach(() => { definirHoje('2026-10-26'); usarDados(exemplo(11)); });
@@ -48,4 +48,13 @@ test('estria e coleta ficam ligadas ao talhão pelo id, mesmo após renomear', (
   assert.equal(s.ult, '2026-10-20');
   assert.equal(s.kg, 50);
   assert.equal(talById('t1'), t);
+});
+
+test('venda editada não pode ficar abaixo do que já foi recebido', () => {
+  const v = {id:'v3', data:'2026-10-01', comprador:'X', kg:100, preco:6, fator:0.9837, recs:[{id:'r1', valor:300}, {id:'r2', valor:290.22}]};
+  assert.equal(abaixoDoRecebido(v, 100, 6), false);       // 590,22 líquido = 590,22 recebido
+  assert.equal(abaixoDoRecebido(v, 120, 6), false);
+  assert.equal(abaixoDoRecebido(v, 99, 6), true);
+  assert.equal(abaixoDoRecebido(v, 100, 5.99), true);
+  assert.equal(abaixoDoRecebido({...v, recs:[]}, 1, 0.01), false);
 });

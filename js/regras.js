@@ -31,6 +31,8 @@ const liqV = v => r2(totalV(v)*v.fator);          // preço livre × kg = o que 
 const livreV = v => v.preco*v.fator;
 const livre = p => p*fat();
 const pctRec = v => liqV(v) ? Math.min(100, recV(v)/liqV(v)*100) : 0;
+/* editar kg ou preço não pode deixar o líquido da venda abaixo do que já foi recebido */
+const abaixoDoRecebido = (v, kg, preco) => liqV({...v, kg, preco}) < r2(recV(v));
 
 /* ---------- floresta: talhões → ramais (contagem de árvores com histórico) ---------- */
 const arv = r => r.hist.at(-1).arv;
@@ -103,4 +105,4 @@ function statusTalhoes(){
   });
 }
 
-export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };
+export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, abaixoDoRecebido, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };

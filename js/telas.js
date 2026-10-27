@@ -448,6 +448,7 @@ vendas(){
           <label>Preço por kg (R$)<input name="preco" type="number" step="0.01" min="0.01" inputmode="decimal" value="${v.preco}" required></label>
           <label>Data da venda<input name="data" type="date" value="${v.data}" required></label>
           <label>Previsão de recebimento<input name="venc" type="date" value="${v.venc||''}"></label>
+          <p class="err full" hidden></p>
           <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`
         :`<span class="note">Venda: ${acoes('vendas', v.id, {editar:true, aviso:v.recs.length?'Os recebimentos desta venda também serão apagados.':''})}</span>`}
         ${mod('nfe')?`<div class="steps">

@@ -1,5 +1,5 @@
 import { brl, num, esc, uid, hoje, safraIni, sum } from './util.js';
-import { saldoV, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S } from './regras.js';
+import { saldoV, recV, abaixoDoRecebido, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S } from './regras.js';
 import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, usarFazendaId,
   salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
@@ -221,7 +221,10 @@ app.addEventListener('submit',async e=>{
   }
   if(fm.classList.contains('fEdLanc')){ E.editar=null;
     return salvar(fm.dataset.tab, {id:fm.dataset.id, data:el('data').value, valor:+el('valor').value, cat:el('cat').value, descr:el('desc').value.trim()}); }
-  if(fm.classList.contains('fEdVenda')){ E.editar=null;
+  if(fm.classList.contains('fEdVenda')){ const v=S.vendas.find(x=>x.id===fm.dataset.id);
+    if(v && abaixoDoRecebido(v, +el('kg').value, +el('preco').value)){ const p=fm.querySelector('.err');
+      p.textContent=`Já foram recebidos ${brl(recV(v))} nesta venda. O valor não pode ficar abaixo disso.`; p.hidden=false; return; }
+    E.editar=null;
     return salvar('vendas', {id:fm.dataset.id, comprador:el('comprador').value.trim(), kg:+el('kg').value, preco:+el('preco').value, data:el('data').value, venc:el('venc').value||null}); }
 });
 function syncAp(){
