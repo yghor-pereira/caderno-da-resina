@@ -27,7 +27,7 @@ login(){
       <label class="full">Senha<input id="lSenha" type="password" required minlength="6" autocomplete="${E.lMode==='criar'?'new-password':'current-password'}"></label>
       ${E.lMode==='criar'?`<div class="full sec" style="gap:6px"><span class="note">Quais funções você quer usar? Dá para mudar depois em Conta.</span><div class="mods">${modsHtml(MOD_PADRAO)}</div></div>`:''}
       ${E.lAviso?`<p class="note full" id="lAviso" role="status"><b>${esc(E.lAviso)}</b></p>`:''}
-      <p class="err full" id="lErr" hidden></p>
+      <p class="err full" id="lErr" ${E.lErro?'':'hidden'}>${esc(E.lErro)}</p>
       <button class="btn full">${E.lMode==='criar'?'Criar conta':'Entrar'}</button>
     </form>
   </section>

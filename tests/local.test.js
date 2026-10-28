@@ -111,3 +111,18 @@ test('mesclar só conta como mudança o que difere do que já está no aparelho'
   assert.equal(mesclar(L, 'talhoes', [{ id: 't1', fazenda_id: 'f1', nome: 'A', user_id: 'u1', updated_at: '2026-10-26T10:00:00Z', deleted_at: null }]), 0);
   assert.equal(mesclar(L, 'talhoes', [{ id: 't1', fazenda_id: 'f1', nome: 'B', user_id: 'u1', updated_at: '2026-10-26T11:00:00Z', deleted_at: null }]), 1);
 });
+
+test('conta suspensa: apaga o cache dela (por id ou pelo e-mail) e deixa o das outras', async () => {
+  const { apagarCache, apagarCacheDoEmail } = await import('../js/local.js');
+  const arm = memoria();
+  for (const [id, email] of [['A', 'a@x.com'], ['B', 'b@x.com'], ['C', 'c@x.com']]) {
+    const L = abrir(id, arm); definirMeta(L, { email }); gravar(L, 'fazendas', faz('f' + id));
+  }
+  definirUltimo('B', arm);
+  apagarCache('A', arm);
+  apagarCacheDoEmail('b@x.com', arm);
+  assert.deepEqual(abrir('A', arm).linhas, {});
+  assert.deepEqual(abrir('B', arm).linhas, {});
+  assert.ok(abrir('C', arm).linhas.fazendas.fC);
+  assert.equal(ultimoUsuario(arm), 'B');   // a marca do último usuário não é um cache
+});

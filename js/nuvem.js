@@ -110,8 +110,11 @@ async function conectar(importar = u => import(u)){
   cliente = createClient(SUPABASE_URL, SUPABASE_ANON, {auth:{persistSession:true, autoRefreshToken:true, storageKey:'caderno-resina-auth'}});
   return cliente;
 }
+const SUSPENSA = 'Conta suspensa, entre em contato.';
+const ehBloqueio = e => e?.code==='user_banned' || /banned/i.test(e?.message||'');
 function erroAuth(e){
   const m = (e?.message||'')+' '+(e?.code||'');
+  if (ehBloqueio(e)) return SUSPENSA;
   if (/invalid.*credentials|invalid_credentials/i.test(m)) return 'E-mail ou senha incorretos.';
   if (/already.*registered|user_already_exists|already exists/i.test(m)) return 'Já existe uma conta com este e-mail. Use Entrar.';
   if (/email.*not.*confirmed|email_not_confirmed/i.test(m)) return 'Confirme o seu e-mail pelo link que enviamos e depois entre.';
@@ -125,7 +128,7 @@ async function entrar(email, senha){
     const { data, error } = await c.auth.signInWithPassword({email, password:senha});
     if (error) throw error;
     return data.user;
-  } catch(e) { throw new Error(erroAuth(e)); }
+  } catch(e) { throw Object.assign(new Error(erroAuth(e)), {suspensa:ehBloqueio(e)}); }
 }
 async function cadastrar(nome, email, senha, modulos){
   try {
@@ -140,9 +143,10 @@ async function cadastrar(nome, email, senha, modulos){
 }
 async function sair(){ try { await (await conectar()).auth.signOut({scope:'local'}); } catch(e) {} }
 /* 'ok' com sessão válida; 'offline' quando não deu para falar com o servidor (renovar o acesso exige rede);
-   'nenhuma' só quando não há sessão ou o servidor recusou */
+   'bloqueado' quando a conta foi suspensa; 'nenhuma' quando não há sessão ou o servidor recusou */
 function classificarSessao({data, error}){
   if (data?.session) return 'ok';
+  if (ehBloqueio(error)) return 'bloqueado';
   if (error && (error.name==='AuthRetryableFetchError' || error.status===0 || /fetch|network|load failed/i.test(error.message||''))) return 'offline';
   return 'nenhuma';
 }
@@ -157,4 +161,4 @@ async function ieDisponivel(ie, ignorar){
   } catch(e) { return null; }   // sem rede: não dá para saber agora
 }
 
-export { CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };
+export { SUSPENSA, erroAuth, CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };

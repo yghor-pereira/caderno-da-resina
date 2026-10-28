@@ -1,11 +1,11 @@
 import { brl, num, plural, esc, uid, hoje, safraIni, sum } from './util.js';
 import { saldoV, recV, abaixoDoRecebido, REG, fat, liqV, livre, arv, talByNome, talById, ramsDe, S } from './regras.js';
 import { exemplo } from './exemplo.js';
-import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, usarFazendaId,
+import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, suspender, usarFazendaId,
   salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
-import { ultimoUsuario } from './local.js';
+import { ultimoUsuario, apagarCacheDoEmail } from './local.js';
 import { linha, linhasDoTalhao } from './mapa.js';
-import { entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
+import { SUSPENSA, entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
 import { soDig, abrirEmissao } from './nfe.js';
 import { ieValida } from './ie.js';
 import { V } from './telas.js';
@@ -112,7 +112,7 @@ app.addEventListener('click',async e=>{
   const d=b.dataset;
   if(d.faz){ usarFazenda(d.faz); }
   else if(d.ir){ ir(d.ir); }
-  else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; render(); }
+  else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; E.lErro=''; render(); }
   else if(d.demo){ b.disabled=true; b.textContent='Entrando…';
     try { await aposLogin(await entrar(EX.email, EX.senha)); }
     catch(err){ b.disabled=false; b.textContent='Entrar como exemplo'; const el=document.getElementById('lErr'); el.textContent=err.message; el.hidden=false; } }
@@ -157,7 +157,7 @@ app.addEventListener('change',e=>{
 app.addEventListener('submit',async e=>{
   e.preventDefault(); const $=id=>document.getElementById(id); const f=e.target.id, fid=SES.fid;
   const erro=(id,m)=>{ const el=$(id); el.textContent=m; el.hidden=false; };
-  if(f==='fLogin'){ E.lAviso=''; const email=$('lEmail').value.trim().toLowerCase(), senha=$('lSenha').value, btn=e.target.querySelector('.btn');
+  if(f==='fLogin'){ E.lAviso=''; E.lErro=''; const email=$('lEmail').value.trim().toLowerCase(), senha=$('lSenha').value, btn=e.target.querySelector('.btn');
     btn.disabled=true;
     try {
       if(E.lMode==='entrar') return await aposLogin(await entrar(email, senha));
@@ -166,7 +166,7 @@ app.addEventListener('submit',async e=>{
       if(u) return await aposLogin(u);
       /* confirmação de e-mail ligada no Supabase: a conta só entra depois do link */
       E.lMode='entrar'; E.emailPre=email; E.lAviso=`Enviamos um link para ${email}. Confirme e depois entre.`; return render();
-    } catch(err){ btn.disabled=false; return erro('lErr', err.message); } }
+    } catch(err){ btn.disabled=false; if(err.suspensa) apagarCacheDoEmail(email); return erro('lErr', err.message); } }
   if(f==='fUser'){ salvar('perfis', {id:usuario().id, nome:$('uNome').value.trim()}); return; }
   if(f==='fFaz'){ const u=usuario(), id=e.target.dataset.id, ie=soDig($('zIe').value);
     if(ie.length<8 || ie.length>14) return erro('zErr','A Inscrição Estadual deve ter de 8 a 14 dígitos.');
@@ -252,6 +252,7 @@ setInterval(()=>{ if(document.visibilityState==='visible' && SES.L) sincronizar(
 async function iniciar(){
   E.atual='carregando'; render();
   const s=await sessao(), ult=ultimoUsuario();
+  if (s.estado==='bloqueado') return ult ? suspender(ult) : (E.lErro=SUSPENSA, E.atual='login', render());
   if (s.estado==='ok') abrirSessao(s.session.user.id, {email:s.session.user.email, nome:s.session.user.user_metadata?.nome||''});
   else if (ult && (s.estado==='offline' || !navigator.onLine)) abrirSessao(ult);   // sem rede (ou rede ruim): abre o cache
   E.atual = SES.L ? 'fazendas' : 'login';

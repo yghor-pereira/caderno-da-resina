@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoria, clienteFalso } from './apoio.js';
 import { abrir, gravar, pendentes, ativas, cursorDe } from '../js/local.js';
-import { criarNuvem, classificarSessao, conectar, CDN, PAGINA, depoisDe } from '../js/nuvem.js';
+import { criarNuvem, classificarSessao, erroAuth, SUSPENSA, conectar, CDN, PAGINA, depoisDe } from '../js/nuvem.js';
 
 const novoL = () => abrir('user-1', memoria());
 
@@ -208,4 +208,11 @@ test('depois de falhar ao carregar a biblioteca (sem sinal), tenta de novo por o
   assert.match(pedidos[1], /\?r=\d+$/);
   assert.match(pedidos[2], /\?r=\d+$/);
   assert.ok(pedidos[2].startsWith(CDN + '?r='));
+});
+
+test('conta suspensa: sessão e login viram a mensagem de conta suspensa', () => {
+  assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthApiError', status: 400, code: 'user_banned', message: 'User is banned' } }), 'bloqueado');
+  assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthApiError', status: 400, message: 'Invalid Refresh Token: User Banned' } }), 'bloqueado');
+  assert.equal(erroAuth({ code: 'user_banned', message: 'User is banned' }), SUSPENSA);
+  assert.equal(erroAuth({ code: 'invalid_credentials', message: 'Invalid login credentials' }), 'E-mail ou senha incorretos.');
 });

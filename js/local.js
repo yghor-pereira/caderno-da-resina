@@ -76,7 +76,19 @@ function marcarErro(L, tabela, id, msg){
 const ativas = (L, tabela) => Object.values(L.linhas[tabela]||{}).filter(l=>!l.deleted_at);
 const erros = L => Object.entries(L.linhas).flatMap(([tabela,tab])=>Object.values(tab).filter(l=>l._erro).map(linha=>({tabela, linha})));
 
+/* conta suspensa: os dados dela saem do aparelho (continuam no servidor) */
+function apagarCache(userId, arm=armPadrao()){ try { arm.removeItem(PREFIXO+userId); } catch(e) {} }
+/* no login recusado só se sabe o e-mail: procura o cache que guardou esse e-mail */
+function apagarCacheDoEmail(email, arm=armPadrao()){
+  try {
+    for (let i=arm.length-1; i>=0; i--) {
+      const k = arm.key(i);
+      if (!k?.startsWith(PREFIXO) || k===PREFIXO+'ultimo') continue;
+      if (JSON.parse(arm.getItem(k))?.meta?.email===email) arm.removeItem(k);
+    }
+  } catch(e) {}
+}
 const ultimoUsuario = (arm=armPadrao()) => { try { return arm.getItem(PREFIXO+'ultimo'); } catch(e) { return null; } };
 const definirUltimo = (userId, arm=armPadrao()) => { try { userId ? arm.setItem(PREFIXO+'ultimo', userId) : arm.removeItem(PREFIXO+'ultimo'); } catch(e) {} };
 
-export { abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, compactar, cursorDe, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };
+export { apagarCache, apagarCacheDoEmail, abrir, gravar, gravarLote, excluir, excluirLote, definirMeta, compactar, cursorDe, mesclar, pendentes, tirarDaFila, marcarErro, ativas, erros, ultimoUsuario, definirUltimo };

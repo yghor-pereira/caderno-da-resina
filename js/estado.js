@@ -1,9 +1,9 @@
 import { uid, hoje, safraIni, diff } from './util.js';
 import { usarDados } from './regras.js';
 import { exemplo } from './exemplo.js';
-import { abrir, gravar, gravarLote, excluirLote, definirMeta, pendentes, erros, definirUltimo } from './local.js';
+import { apagarCache, abrir, gravar, gravarLote, excluirLote, definirMeta, pendentes, erros, definirUltimo } from './local.js';
 import { linha, dadosParaLinhas, fazendasDe, linhasDaFazenda } from './mapa.js';
-import { criarNuvem, conectar, sessao, sair as sairNuvem } from './nuvem.js';
+import { SUSPENSA, criarNuvem, conectar, sessao, sair as sairNuvem } from './nuvem.js';
 
 /* ---------- funções do app (cada usuário liga e desliga em Conta) ---------- */
 const MODS = [
@@ -23,7 +23,7 @@ usarDados(vazio());
 /* ---------- estado da tela ---------- */
 const CUR = safraIni(hoje());
 const E = {atual:'login', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null,
-  lMode:'entrar', lAviso:'', fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
+  lMode:'entrar', lAviso:'', lErro:'', fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
   render:()=>{}, mostrarSync:()=>{}};
 
 /* ---------- sessão: usuário logado e o cache local dele ---------- */
@@ -55,6 +55,13 @@ async function fecharSessao(){
   recarregar();
   await sairNuvem();
 }
+/* conta suspensa por um administrador: sai, apaga o cache deste aparelho e avisa na entrada */
+async function suspender(userId){
+  if (SES.L?.userId===userId) await fecharSessao(); else await sairNuvem();
+  apagarCache(userId); definirUltimo(null);
+  E.lErro = SUSPENSA; E.lAviso = ''; E.lMode = 'entrar'; E.atual = 'login';
+  E.render();
+}
 function usarFazendaId(fid){ SES.fid = fid; recarregar(); }
 
 /* ---------- gravações: cache local + fila; a sincronização vem logo depois ---------- */
@@ -78,6 +85,7 @@ async function sincronizar(){
   let r;
   try {
     const s = await sessao();
+    if (s.estado==='bloqueado') { await suspender(L.userId); return {ok:false, bloqueado:true}; }
     if (s.estado==='offline') r = {ok:false, offline:true};
     else if (s.estado!=='ok' || s.session.user.id!==L.userId) r = {ok:false, sessao:false};
     else { SES.nuvem ??= criarNuvem(await conectar(), L, {ativo:()=>SES.L===L}); r = await SES.nuvem.sincronizar(); }
@@ -120,5 +128,5 @@ function prepararExemplo(){
   for (const f of u.fazendas) if (f.demo && (!f.demo_gerado_em || diff(f.demo_gerado_em, hoje())>7)) regerarExemplo(f);
 }
 
-export { MODS, MOD_PADRAO, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, recarregar, abrirSessao, fecharSessao, usarFazendaId,
+export { MODS, MOD_PADRAO, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, recarregar, abrirSessao, fecharSessao, suspender, usarFazendaId,
   salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo };
