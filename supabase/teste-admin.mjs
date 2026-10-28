@@ -1,5 +1,6 @@
 // Verifica o acesso de administrador e o bloqueio de contas. Precisa de três contas de teste:
 // ADMIN (cadastrada em public.admins), COMUM e ALVO (contas comuns; ALVO é bloqueada e desbloqueada).
+// Sem ADMIN_EMAIL, roda só as verificações de usuário comum e visitante.
 //   SUPABASE_URL=... SUPABASE_ANON=... ADMIN_EMAIL=... ADMIN_SENHA=... COMUM_EMAIL=... COMUM_SENHA=... \
 //   ALVO_EMAIL=... ALVO_SENHA=... node supabase/teste-admin.mjs
 const E = process.env, URL = E.SUPABASE_URL, ANON = E.SUPABASE_ANON;
@@ -15,12 +16,11 @@ const entrar = async (email, password) => { const j = await token({ email, passw
 const rest = (tok, path, init = {}) => fetch(`${URL}/rest/v1/${path}`, { ...init, headers: { ...h(tok), ...(init.headers || {}) } });
 const acao = (tok, corpo) => fetch(`${URL}/functions/v1/admin-acoes`, { method: 'POST', headers: h(tok), body: JSON.stringify(corpo) });
 
-const adm = await entrar(E.ADMIN_EMAIL, E.ADMIN_SENHA), com = await entrar(E.COMUM_EMAIL, E.COMUM_SENHA);
+const adm = E.ADMIN_EMAIL ? await entrar(E.ADMIN_EMAIL, E.ADMIN_SENHA) : null, com = await entrar(E.COMUM_EMAIL, E.COMUM_SENHA);
 const alvo = await entrar(E.ALVO_EMAIL, E.ALVO_SENHA);
 
 // usuário comum
 ok(await (await rest(com.access_token, 'rpc/eh_admin', { method: 'POST', body: '{}' })).json() === false, 'eh_admin() é falso para o usuário comum');
-ok(await (await rest(adm.access_token, 'rpc/eh_admin', { method: 'POST', body: '{}' })).json() === true, 'eh_admin() é verdadeiro para o admin');
 for (const t of ['admins', 'auditoria']) {
   const r = await rest(com.access_token, `${t}?select=*`);
   ok(r.status === 401 || r.status === 403, `usuário comum não lê ${t} (HTTP ${r.status})`);
@@ -36,6 +36,8 @@ const ra = await acao(ANON, { acao: 'bloquear', alvo: alvo.user.id, motivo: 'tes
 ok(ra.status === 401, `visitante sem login não chama admin-acoes (HTTP ${ra.status})`);
 
 // admin
+if (!adm) { console.log('INFO  sem ADMIN_EMAIL: verificações de admin puladas'); process.exit(falhas ? 1 : 0); }
+ok(await (await rest(adm.access_token, 'rpc/eh_admin', { method: 'POST', body: '{}' })).json() === true, 'eh_admin() é verdadeiro para o admin');
 ok((await acao(adm.access_token, { acao: 'bloquear', alvo: alvo.user.id, motivo: '' })).status === 400, 'bloquear sem motivo é recusado');
 ok((await acao(adm.access_token, { acao: 'bloquear', alvo: adm.user.id, motivo: 'teste' })).status === 400, 'admin não bloqueia a própria conta');
 const rb = await acao(adm.access_token, { acao: 'bloquear', alvo: alvo.user.id, motivo: 'teste automatizado' });
