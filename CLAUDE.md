@@ -26,6 +26,7 @@ App de gestão financeira e de produção para **pequenos produtores de pinus e 
 | `nuvem.js` | Cliente Supabase, login, `enviar`/`buscar`/`sincronizar` |
 | `estado.js` | Sessão, estado da tela (`E`), `salvar`/`salvarLote`/`apagar`, agenda da sincronização, conta de exemplo |
 | `telas.js`, `nfe.js`, `graficos.js`, `app.js` | Telas, NF-e simulada, gráficos SVG, render e eventos |
+| `admin.js`, `admin-lista.js` | Área administrativa (`admin.html`, página separada): lista, filtros, detalhe e ações. Fora da `CASCA` do `sw.js` de propósito (precisa de internet e não é carregada pelos produtores) |
 
 As telas leem `S` (formato em memória); **toda gravação passa por `salvar(tabela, linha)`** com os conversores de `mapa.js`. Nunca altere `S` diretamente: ele é remontado do cache a cada mudança.
 
@@ -35,6 +36,7 @@ As telas leem `S` (formato em memória); **toda gravação passa por `salvar(tab
 - `0003_admin.sql`: tabela `admins` (papel de admin, só no servidor), `eh_admin()`, `auditoria`, colunas `is_demo`/`bloqueado`/`motivo_bloqueio`/`trocar_senha` em `perfis` (o gatilho `proteger_perfil` impede o usuário de mudá-las) e `encerrar_sessoes()` (só `service_role`).
 - Edge Function `supabase/functions/admin-acoes` (bloquear/desbloquear): confere que quem chama está em `admins`, usa a chave de serviço (só no servidor) e grava a `auditoria`. Primeiro admin: `supabase/admin-inicial.sql`. Teste: `supabase/teste-admin.mjs`.
 - `0004_metricas.sql`: tabelas `eventos` e `sessoes` (ninguém lê ou grava pela API) e `registrar_uso()`, que grava o lote em nome de quem está logado, marca `is_demo` e valida o formato. Teste: `supabase/teste-metricas.mjs`.
+- `0005_admin_usuarios.sql`: `admin_usuarios()` e `admin_usuario()` (só para admins; abrir o detalhe fica na auditoria como `ver_detalhe`), `senha_trocada()`. O gatilho `proteger_perfil` decide pelo papel que executa (`current_user`), então funções do servidor e a chave de serviço mudam as colunas protegidas. A Edge Function também gera senha temporária (devolvida uma vez, nunca gravada); o app obriga a trocar no próximo acesso (tela `senha`).
 - `supabase/gerenciar.sh sql <arquivo>` aplica SQL no projeto pela API de gerenciamento.
 - Conta suspensa: o bloqueio encerra as sessões, então a renovação volta "sessão não encontrada" e o app pede para entrar de novo (o token já emitido vale até 15 min). O login volta `user_banned`: o app mostra "Conta suspensa, entre em contato." e apaga o cache daquela conta no aparelho (pelo e-mail).
 - `npm test` roda os testes com `node --test` (sem instalar nada). `supabase/teste-rls.mjs` verifica o isolamento entre contas.
