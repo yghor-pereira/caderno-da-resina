@@ -40,6 +40,21 @@ login(){
   <p class="note">${navigator.onLine?'Seus registros ficam guardados na nuvem e também neste aparelho, para você usar na floresta sem sinal.':'<b class="down">Sem internet.</b> O primeiro acesso precisa de conexão; depois o app funciona sem sinal.'}</p>`;
 },
 
+senha(){
+  return `
+  <section class="card sec">
+    <h2>Crie uma nova senha</h2>
+    <p class="note">Sua senha foi redefinida por um administrador. Para continuar, escolha uma senha nova, só sua.</p>
+    <form id="fSenha">
+      <label class="full">Nova senha<input id="sNova" type="password" required minlength="6" autocomplete="new-password"></label>
+      <label class="full">Repita a nova senha<input id="sRep" type="password" required minlength="6" autocomplete="new-password"></label>
+      <p class="err full" id="sErr" hidden></p>
+      <button class="btn full">Salvar nova senha</button>
+    </form>
+  </section>
+  <button type="button" class="btn ghost" data-sair="1" data-ok="1">Sair da conta</button>`;
+},
+
 fazendas(){
   const u=usuario(), fs=u.fazendas;
   return `
@@ -57,7 +72,7 @@ conta(){
   const u=usuario(), fe=u.fazendas.find(f=>f.id===E.fazEdit), erros=listaErros();
   return `
   <section class="sec">
-    <div class="sec-h"><h2>Minha conta</h2>${SES.fid?'':'<button type="button" class="btn sm ghost" data-ir="fazendas">Minhas fazendas</button>'}</div>
+    <div class="sec-h"><h2>Minha conta</h2><div class="hbtn">${E.admin?'<a class="btn sm ghost" href="admin.html">Área administrativa</a>':''}${SES.fid?'':'<button type="button" class="btn sm ghost" data-ir="fazendas">Minhas fazendas</button>'}</div></div>
     <div class="card sec"><form id="fUser">
       <label>Nome<input id="uNome" value="${esc(u.nome)}" required></label>
       <label>E-mail<input value="${esc(u.email)}" disabled></label>

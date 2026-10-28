@@ -51,3 +51,16 @@ test('gravações viram métricas só com tipo e tabela; dados de exemplo não c
   est.regerarExemplo(est.usuario().fazendas.find(f => f.id === FID));
   assert.deepEqual(M().fila, []);
 });
+
+test('senha temporária: perfil marcado pede troca até o app confirmar a senha nova', () => {
+  const uid = est.SES.L.userId;
+  gravarLote(est.SES.L, [['perfis', { id: uid, nome: 'Ana', trocar_senha: true }]]);
+  est.recarregar();
+  assert.equal(est.usuario().trocarSenha, true);
+  est.E.senhaTrocada = uid; est.recarregar();
+  assert.equal(est.usuario().trocarSenha, false);
+  est.E.senhaTrocada = null;
+  gravarLote(est.SES.L, [['perfis', { id: uid, trocar_senha: false }]]); est.recarregar();
+  assert.equal(est.usuario().trocarSenha, false);
+  assert.match(V.senha(), /Crie uma nova senha/);
+});

@@ -40,7 +40,7 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `feature_used` | usou uma função que não é só gravar | `funcao` (abaixo); `modulo` em `funcao_ligada`/`funcao_desligada` |
 | `export` | reservado: o app ainda não exporta nada | — |
 
-**Telas** (`tela` ou `tela:modo`): `fazendas`, `geral`, `conta`, `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
+**Telas** (`tela` ou `tela:modo`): `fazendas`, `geral`, `conta`, `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
 
 **Tabelas** (`record_*`): `perfis`, `fazendas`, `talhoes`, `ramais`, `contagens`, `estrias`, `coletas`, `vendas`, `recebimentos`, `lancamentos`, `compromissos`, `compradores`.
 

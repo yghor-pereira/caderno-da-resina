@@ -6,7 +6,7 @@ import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao,
 import { ultimoUsuario, apagarCacheDoEmail } from './local.js';
 import { track, atividade, tique } from './metricas.js';
 import { linha, linhasDoTalhao } from './mapa.js';
-import { SUSPENSA, entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
+import { SUSPENSA, entrar, cadastrar, sessao, trocarSenha, ehAdmin, ieDisponivel } from './nuvem.js';
 import { soDig, abrirEmissao } from './nfe.js';
 import { ieValida } from './ie.js';
 import { V } from './telas.js';
@@ -23,6 +23,7 @@ async function aposLogin(u, modo){
   track('login', {modo});
   E.atual='fazendas'; E.sairPend=false; render(); window.scrollTo(0,0);
   if ((await sincronizar()).ok) prepararExemplo();
+  E.admin = await ehAdmin(); if (E.atual==='conta') render({seguro:true});
 }
 /* dependências entre funções: Produção precisa de Floresta; NF-e precisa de Vendas */
 function syncMods(src){
@@ -71,6 +72,8 @@ function render(op){
   const u=usuario(), fid=SES.fid;
   if (E.atual==='carregando') { app.innerHTML='<p class="note">Abrindo o caderno…</p>'; hdr.innerHTML='<h1>Caderno da Resina</h1>'; nav.hidden=true; return; }
   if (!u) E.atual='login';
+  else if (u.trocarSenha) E.atual='senha';   // senha temporária: nada mais abre antes de trocar
+  else if (E.atual==='senha') E.atual='fazendas';
   else if (!fid && E.atual!=='conta') E.atual='fazendas';
   else if (fid==='todas' && !['geral','conta','fazendas'].includes(E.atual)) E.atual='geral';
   if (fazAtual() && NAV_MOD[E.atual] && !mod(NAV_MOD[E.atual])) E.atual='inicio';
@@ -82,7 +85,7 @@ function render(op){
         <p>${g? u.fazendas.length+' fazendas · '+esc(u.nome) : f? 'IE '+esc(f.ie)+' · '+esc(f.municipio)+'/'+esc(f.uf) : esc(u.nome)}</p>
         <button type="button" id="sync" class="sync"></button></div>
         <div class="hbtn">${(f||g)?'<button type="button" class="btn sm ghost" data-trocar="1">Trocar fazenda</button>':''}<button type="button" class="btn sm ghost" data-conta="1" ${E.atual==='conta'?'aria-current="page"':''}>Conta</button></div></div>`;
-  nav.hidden = !f;
+  nav.hidden = !f || E.atual==='senha';
   nav.querySelectorAll('button').forEach(b=>{ b.hidden = !!NAV_MOD[b.dataset.v] && !mod(NAV_MOD[b.dataset.v]);
     if(b.dataset.v===E.atual) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   document.getElementById('demo').hidden = !(f && S.demo);
@@ -174,6 +177,12 @@ app.addEventListener('submit',async e=>{
       /* confirmação de e-mail ligada no Supabase: a conta só entra depois do link */
       E.lMode='entrar'; E.emailPre=email; E.lAviso=`Enviamos um link para ${email}. Confirme e depois entre.`; return render();
     } catch(err){ btn.disabled=false; if(err.suspensa) apagarCacheDoEmail(email); return erro('lErr', err.message); } }
+  if(f==='fSenha'){ const nova=$('sNova').value, btn=e.target.querySelector('.btn');
+    if(nova!==$('sRep').value) return erro('sErr','As duas senhas não são iguais.');
+    btn.disabled=true;
+    try { await trocarSenha(nova); E.senhaTrocada=SES.L?.userId; render(); sincronizar(); }
+    catch(err){ btn.disabled=false; erro('sErr', err.message); }
+    return; }
   if(f==='fUser'){ salvar('perfis', {id:usuario().id, nome:$('uNome').value.trim()}); return; }
   if(f==='fFaz'){ const u=usuario(), id=e.target.dataset.id, ie=soDig($('zIe').value);
     if(ie.length<8 || ie.length>14) return erro('zErr','A Inscrição Estadual deve ter de 8 a 14 dígitos.');
@@ -271,6 +280,7 @@ async function iniciar(){
   E.atual = SES.L ? 'fazendas' : 'login';
   render();
   if (SES.L && (await sincronizar()).ok) prepararExemplo();
+  if (SES.L) { E.admin = await ehAdmin(); if (E.atual==='conta') render({seguro:true}); }
 }
 iniciar();
 /* guarda o app no aparelho para abrir sem internet */

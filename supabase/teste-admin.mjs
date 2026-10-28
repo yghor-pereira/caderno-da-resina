@@ -32,6 +32,12 @@ const rc = await acao(com.access_token, { acao: 'bloquear', alvo: alvo.user.id, 
 ok(rc.status === 403, `usuário comum não chama admin-acoes (HTTP ${rc.status})`);
 const rs = await rest(com.access_token, 'rpc/encerrar_sessoes', { method: 'POST', body: JSON.stringify({ p_user: alvo.user.id }) });
 ok(rs.status >= 400, `usuário comum não encerra sessões de outra conta (HTTP ${rs.status})`);
+for (const [f, corpo] of [['admin_usuarios', {}], ['admin_usuario', { p_id: alvo.user.id }]]) {
+  const r = await rest(com.access_token, `rpc/${f}`, { method: 'POST', body: JSON.stringify(corpo) });
+  ok(r.status === 403, `usuário comum não chama ${f} (HTTP ${r.status})`);
+}
+const st = await rest(com.access_token, 'rpc/senha_trocada', { method: 'POST', body: '{}' });
+ok(st.status < 300, `senha_trocada só mexe na própria conta e não falha sem marca (HTTP ${st.status})`);
 const ra = await acao(ANON, { acao: 'bloquear', alvo: alvo.user.id, motivo: 'teste' });
 ok(ra.status === 401, `visitante sem login não chama admin-acoes (HTTP ${ra.status})`);
 
@@ -52,4 +58,29 @@ console.log(`INFO  token de acesso já emitido, antes de expirar: HTTP ${r3.stat
 const rd = await acao(adm.access_token, { acao: 'desbloquear', alvo: alvo.user.id, motivo: 'fim do teste' });
 ok(rd.status === 200, `admin desbloqueia (HTTP ${rd.status})`);
 ok(!!(await token({ email: E.ALVO_EMAIL, password: E.ALVO_SENHA })).access_token, 'conta desbloqueada volta a entrar');
+
+// lista e detalhe
+const lista = await (await rest(adm.access_token, 'rpc/admin_usuarios', { method: 'POST', body: '{}' })).json();
+const linha = Array.isArray(lista) && lista.find(u => u.id === alvo.user.id);
+ok(!!linha && 'sessoes' in linha && 'segundos' in linha && linha.email === E.ALVO_EMAIL, `admin lista os usuários (${Array.isArray(lista) ? lista.length : 0})`);
+const det = await (await rest(adm.access_token, 'rpc/admin_usuario', { method: 'POST', body: JSON.stringify({ p_id: alvo.user.id }) })).json();
+ok(det?.usuario?.id === alvo.user.id && det.dados && Array.isArray(det.acessos) && det.auditoria?.some(a => a.acao === 'bloquear'),
+  'detalhe traz usuário, quantidades, acessos e a auditoria (com o bloqueio)');
+ok(!JSON.stringify(det.dados).match(/valor|descr|nome/), 'detalhe mostra só quantidades, sem valores nem descrições');
+
+// senha temporária
+const rt = await acao(adm.access_token, { acao: 'senha_temporaria', alvo: alvo.user.id, motivo: 'esqueceu a senha' });
+const jt = await rt.json();
+ok(rt.status === 200 && /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/.test(jt.senha || ''), 'admin gera senha temporária e recebe a senha uma vez');
+ok(!(await token({ email: E.ALVO_EMAIL, password: E.ALVO_SENHA })).access_token, 'a senha antiga deixa de valer');
+const tmp = await token({ email: E.ALVO_EMAIL, password: jt.senha });
+ok(!!tmp.access_token, 'a senha temporária entra');
+const [pt] = await (await rest(tmp.access_token, `perfis?id=eq.${alvo.user.id}&select=trocar_senha`)).json();
+ok(pt?.trocar_senha === true, 'o perfil fica marcado para trocar a senha');
+const nova = await fetch(`${URL}/auth/v1/user`, { method: 'PUT', headers: h(tmp.access_token), body: JSON.stringify({ password: E.ALVO_SENHA }) });
+await rest(tmp.access_token, 'rpc/senha_trocada', { method: 'POST', body: '{}' });
+const [pt2] = await (await rest(tmp.access_token, `perfis?id=eq.${alvo.user.id}&select=trocar_senha`)).json();
+ok(nova.status === 200 && pt2?.trocar_senha === false, 'depois de trocar a senha, a marca sai do perfil');
+const det2 = await (await rest(adm.access_token, 'rpc/admin_usuario', { method: 'POST', body: JSON.stringify({ p_id: alvo.user.id }) })).json();
+ok(!JSON.stringify(det2.auditoria).includes(jt.senha), 'a senha temporária não aparece na auditoria');
 process.exit(falhas ? 1 : 0);

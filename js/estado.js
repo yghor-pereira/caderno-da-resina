@@ -24,7 +24,7 @@ usarDados(vazio());
 /* ---------- estado da tela ---------- */
 const CUR = safraIni(hoje());
 const E = {atual:'login', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null,
-  lMode:'entrar', lAviso:'', lErro:'', fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
+  lMode:'entrar', lAviso:'', lErro:'', senhaTrocada:null, admin:false, fazEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
   render:()=>{}, mostrarSync:()=>{}};
 
 /* ---------- sessão: usuário logado e o cache local dele ---------- */
@@ -35,7 +35,7 @@ function usuario(){
   if (memo.v===versao) return memo.u;
   const p = SES.L.linhas.perfis?.[SES.L.userId];
   memo = {v:versao, u:{id:SES.L.userId, email:SES.L.meta.email||'', nome:p?.nome || SES.L.meta.nome || '',
-    modulos:p?.modulos || MOD_PADRAO, fazendas:fazendasDe(SES.L)}};
+    modulos:p?.modulos || MOD_PADRAO, fazendas:fazendasDe(SES.L), trocarSenha:!!p?.trocar_senha && E.senhaTrocada!==SES.L.userId}};
   return memo.u;
 }
 const fazAtual = () => usuario()?.fazendas.find(f=>f.id===SES.fid) || null;

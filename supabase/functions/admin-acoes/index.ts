@@ -2,7 +2,7 @@
 // Quem chama manda o próprio token; a função confere em public.admins que é admin
 // e grava cada ação em public.auditoria.
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { validar, cabecalhos } from './regras.js';
+import { validar, cabecalhos, senhaTemporaria } from './regras.js';
 
 const URL = Deno.env.get('SUPABASE_URL')!;
 const servico = createClient(URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -31,7 +31,16 @@ Deno.serve(async (req) => {
   if (eAlvo || !alvoU?.user) return resposta(404, { erro: 'Usuário não encontrado.' });
 
   const detalhes: Record<string, unknown> = { email: alvoU.user.email };
-  if (acao === 'bloquear') {
+  let senha: string | null = null;
+  if (acao === 'senha_temporaria') {
+    // a senha volta só nesta resposta, para o admin passar ao produtor; não é gravada em lugar nenhum
+    senha = senhaTemporaria();
+    const { error } = await servico.auth.admin.updateUserById(alvo, { password: senha });
+    if (error) return resposta(500, { erro: 'Não foi possível trocar a senha: ' + error.message });
+    await servico.from('perfis').update({ trocar_senha: true }).eq('id', alvo);
+    const { data: n } = await servico.rpc('encerrar_sessoes', { p_user: alvo });
+    detalhes.sessoes_encerradas = n ?? 0;
+  } else if (acao === 'bloquear') {
     const { error } = await servico.auth.admin.updateUserById(alvo, { ban_duration: BLOQUEIO });
     if (error) return resposta(500, { erro: 'Não foi possível bloquear: ' + error.message });
     await servico.from('perfis').update({ bloqueado: true, motivo_bloqueio: motivo }).eq('id', alvo);
@@ -43,5 +52,5 @@ Deno.serve(async (req) => {
     await servico.from('perfis').update({ bloqueado: false, motivo_bloqueio: null }).eq('id', alvo);
   }
   await servico.from('auditoria').insert({ admin_id: quem.user.id, acao, alvo_id: alvo, motivo, detalhes });
-  return resposta(200, { ok: true, ...detalhes });
+  return resposta(200, { ok: true, ...detalhes, ...(senha ? { senha } : {}) });
 });

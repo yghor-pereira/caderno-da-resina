@@ -154,6 +154,23 @@ async function sessao(){
   try { const res = await (await conectar()).auth.getSession(); return {estado:classificarSessao(res), session:res.data?.session||null}; }
   catch(e) { return {estado:'offline', session:null}; }   // nem a biblioteca carregou: sem rede
 }
+/* troca obrigatória depois de uma senha temporária: grava a senha nova e desliga a marca no perfil */
+async function trocarSenha(nova){
+  try {
+    const c = await conectar();
+    const { error } = await c.auth.updateUser({password:nova});
+    if (error) throw error;
+    const r = await c.rpc('senha_trocada');
+    if (r.error) throw r.error;
+  } catch(e) {
+    if (/different from the old|same_password/i.test((e?.message||'')+(e?.code||''))) throw new Error('A senha nova precisa ser diferente da temporária.');
+    throw new Error(erroAuth(e));
+  }
+}
+/* mostra o link da área administrativa; quem decide o acesso de fato é o servidor */
+async function ehAdmin(){
+  try { const { data } = await (await conectar()).rpc('eh_admin'); return data===true; } catch(e) { return false; }
+}
 async function ieDisponivel(ie, ignorar){
   try {
     const { data, error } = await (await conectar()).rpc('ie_disponivel', {p_ie:ie, p_ignorar:ignorar||null});
@@ -161,4 +178,4 @@ async function ieDisponivel(ie, ignorar){
   } catch(e) { return null; }   // sem rede: não dá para saber agora
 }
 
-export { SUSPENSA, erroAuth, CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, ieDisponivel };
+export { SUSPENSA, erroAuth, CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, trocarSenha, ehAdmin, ieDisponivel };

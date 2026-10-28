@@ -149,3 +149,8 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .sync::before{content:"●";margin-right:5px;font-size:.7em;vertical-align:1px}
 .sync.up{color:var(--good)} .sync.warn{color:var(--amber)} .sync.down{color:var(--bad)}
 .fz .err{font-size:.78rem}
+/* área administrativa (admin.html) */
+.adm-u{font:inherit;color:inherit;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;width:100%;cursor:pointer}
+.adm-u:last-child{border-bottom:0}
+.adm-u .a{font-weight:400;font-size:.85rem;color:var(--muted)}
+.adm-senha{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.35rem;font-weight:700;letter-spacing:.06em;margin:4px 0;user-select:all;overflow-wrap:anywhere}

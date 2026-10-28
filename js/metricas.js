@@ -14,7 +14,7 @@ const TIQUE_MAX_MS = 60e3;        // um intervalo entre sinais nunca conta mais 
 /* catálogo completo: o painel cruza com ele para mostrar também o que teve zero uso */
 const CATALOGO = {
   eventos: ['app_open', 'login', 'logout', 'page_view', 'record_created', 'record_updated', 'record_deleted', 'feature_used', 'export'],
-  telas: ['fazendas', 'geral', 'conta', 'inicio', 'caixa:real', 'caixa:comp', 'floresta:ramais', 'floresta:apontar', 'floresta:estrias', 'producao', 'vendas', 'resultado'],
+  telas: ['fazendas', 'geral', 'conta', 'senha', 'inicio', 'caixa:real', 'caixa:comp', 'floresta:ramais', 'floresta:apontar', 'floresta:estrias', 'producao', 'vendas', 'resultado'],
   tabelas: ['perfis', 'fazendas', 'talhoes', 'ramais', 'contagens', 'estrias', 'coletas', 'vendas', 'recebimentos', 'lancamentos', 'compromissos', 'compradores'],
   funcoes: ['dados_exemplo', 'regerar_exemplo', 'limpar_fazenda', 'compromisso_pago', 'regime_alterado', 'intervalo_alterado',
     'funcao_ligada', 'funcao_desligada', 'safra_trocada', 'nfe_emitida', 'cnpj_consultado', 'sincronizar_manual']
