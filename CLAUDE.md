@@ -33,7 +33,7 @@ As telas leem `S` (formato em memória); **toda gravação passa por `salvar(tab
 - Esquema em `supabase/migrations/`: `0001_inicial.sql` e `0002_sincronizacao_e_seguranca.sql` (`clock_timestamp()`, índices `(user_id, updated_at, id)`, `search_path` e `revoke` de `criar_perfil`). Mudança de esquema = nova migração numerada.
 - `0003_admin.sql`: tabela `admins` (papel de admin, só no servidor), `eh_admin()`, `auditoria`, colunas `is_demo`/`bloqueado`/`motivo_bloqueio`/`trocar_senha` em `perfis` (o gatilho `proteger_perfil` impede o usuário de mudá-las) e `encerrar_sessoes()` (só `service_role`).
 - Edge Function `supabase/functions/admin-acoes` (bloquear/desbloquear): confere que quem chama está em `admins`, usa a chave de serviço (só no servidor) e grava a `auditoria`. Primeiro admin: `supabase/admin-inicial.sql`. Teste: `supabase/teste-admin.mjs`.
-- Conta suspensa: o login e a renovação da sessão voltam `user_banned`; o app apaga o cache daquela conta no aparelho e mostra "Conta suspensa, entre em contato."
+- Conta suspensa: o bloqueio encerra as sessões, então a renovação volta "sessão não encontrada" e o app pede para entrar de novo (o token já emitido vale até 15 min). O login volta `user_banned`: o app mostra "Conta suspensa, entre em contato." e apaga o cache daquela conta no aparelho (pelo e-mail).
 - `npm test` roda os testes com `node --test` (sem instalar nada). `supabase/teste-rls.mjs` verifica o isolamento entre contas.
 - Para rodar localmente: `python3 -m http.server` na raiz e abrir `http://localhost:8000`.
 
