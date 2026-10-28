@@ -25,7 +25,7 @@ login(){
       ${E.lMode==='criar'?'<label class="full">Seu nome<input id="lNome" required autocomplete="name"></label>':''}
       <label class="full">E-mail<input id="lEmail" type="email" required autocomplete="email"></label>
       <label class="full">Senha<input id="lSenha" type="password" required minlength="6" autocomplete="${E.lMode==='criar'?'new-password':'current-password'}"></label>
-      ${E.lMode==='criar'?`<div class="full sec" style="gap:6px"><span class="note">Quais funções você quer usar? Dá para mudar depois em Conta.</span><div class="mods">${modsHtml(MOD_PADRAO)}</div></div>`:''}
+      ${E.lMode==='criar'?`<div class="full sec" style="gap:6px"><span class="note">Quais funções você quer usar? Dá para mudar depois em Conta.</span><span class="note">O app registra quais telas e funções você usa (nunca valores ou descrições), para melhorar o Caderno.</span><div class="mods">${modsHtml(MOD_PADRAO)}</div></div>`:''}
       ${E.lAviso?`<p class="note full" id="lAviso" role="status"><b>${esc(E.lAviso)}</b></p>`:''}
       <p class="err full" id="lErr" ${E.lErro?'':'hidden'}>${esc(E.lErro)}</p>
       <button class="btn full">${E.lMode==='criar'?'Criar conta':'Entrar'}</button>

@@ -4,6 +4,7 @@ import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, fazAtual, mod, abrirSessao, fecharSessao, suspender, usarFazendaId,
   salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
 import { ultimoUsuario, apagarCacheDoEmail } from './local.js';
+import { track, atividade, tique } from './metricas.js';
 import { linha, linhasDoTalhao } from './mapa.js';
 import { SUSPENSA, entrar, cadastrar, sessao, ieDisponivel } from './nuvem.js';
 import { soDig, abrirEmissao } from './nfe.js';
@@ -17,8 +18,9 @@ function usarFazenda(fid){
   render(); window.scrollTo(0,0);
 }
 /* depois do login: abre o cache do usuário, mostra as fazendas e sincroniza */
-async function aposLogin(u){
+async function aposLogin(u, modo){
   abrirSessao(u.id, {email:u.email, nome:u.user_metadata?.nome||''});
+  track('login', {modo});
   E.atual='fazendas'; E.sairPend=false; render(); window.scrollTo(0,0);
   if ((await sincronizar()).ok) prepararExemplo();
 }
@@ -31,6 +33,7 @@ function syncMods(src){
     if (src.value===m.req && !src.checked) cb(m.k).checked=false;
   });
   if (E.atual==='conta') {
+    track('feature_used', {funcao:src.checked?'funcao_ligada':'funcao_desligada', modulo:src.value});
     const modulos=Object.fromEntries([...box.querySelectorAll('input[name=mod]')].map(c=>[c.value,c.checked]));
     salvar('perfis', {id:usuario().id, modulos});
   }
@@ -59,7 +62,7 @@ const app = document.getElementById('app');
 const hdr=document.getElementById('hdr'), nav=document.getElementById('nav');
 /* alguém usando a tela: campo ou botão em foco, ou janela (NF-e) aberta */
 const emUso = () => !!document.querySelector('dialog[open]') || (app.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement.tagName));
-let renderPendente = false;
+let renderPendente = false, telaMedida = null;
 E.render = render;
 /* {seguro:true}: vindo da sincronização; não redesenha por cima de um formulário sendo preenchido */
 function render(op){
@@ -85,6 +88,10 @@ function render(op){
   document.getElementById('demo').hidden = !(f && S.demo);
   if (E.atual==='login' && E.emailPre) { const el=document.getElementById('lEmail'); if (el) el.value=E.emailPre; }
   mostrarSync(); syncAp(); syncVenda();
+  /* métrica de tela: uma por troca de tela (ou de aba interna de Caixa e Floresta) */
+  const modo = E.atual==='floresta' ? E.flMode : E.atual==='caixa' ? E.modoCaixa : null, tela = E.atual+(modo?':'+modo:'');
+  if (u && tela!==telaMedida) track('page_view', {tela:E.atual, ...(modo?{modo}:{})});
+  telaMedida = u ? tela : null;
 }
 function ir(v){ E.atual=v; E.editar=null; E.confirmar=null; render(); window.scrollTo(0,0); }
 app.addEventListener('focusout',()=>setTimeout(()=>{ if(renderPendente && !emUso()) render(); },0));
@@ -95,7 +102,7 @@ hdr.addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!
   if(b.id==='sync'){
     if(b.dataset.sync==='erros'){ ir('conta'); document.getElementById('erros')?.scrollIntoView({block:'start'}); }
     else if(b.dataset.sync==='login'){ E.emailPre=usuario()?.email||''; await fecharSessao(); E.lMode='entrar'; ir('login'); }
-    else sincronizar();
+    else { track('feature_used', {funcao:'sincronizar_manual'}); sincronizar(); }
   } });
 document.getElementById('limpar').addEventListener('click',()=>{ const f=fazAtual(); if(f) limparFazenda(f.id); });
 
@@ -114,19 +121,19 @@ app.addEventListener('click',async e=>{
   else if(d.ir){ ir(d.ir); }
   else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; E.lErro=''; render(); }
   else if(d.demo){ b.disabled=true; b.textContent='Entrando…';
-    try { await aposLogin(await entrar(EX.email, EX.senha)); }
+    try { await aposLogin(await entrar(EX.email, EX.senha), 'exemplo'); }
     catch(err){ b.disabled=false; b.textContent='Entrar como exemplo'; const el=document.getElementById('lErr'); el.textContent=err.message; el.hidden=false; } }
   else if(d.preencher){ document.getElementById('lEmail').value=EX.email; document.getElementById('lSenha').value=EX.senha; document.getElementById('lEmail').focus(); }
   else if(d.sair!==undefined){
     if(d.sair===''){ E.sairPend=false; render(); }
     else if(!d.ok && nPendentes()){ E.sairPend=true; render(); }
-    else { await fecharSessao(); E.sairPend=false; E.lMode='entrar'; E.emailPre=''; ir('login'); } }
+    else { track('logout'); await fecharSessao(); E.sairPend=false; E.lMode='entrar'; E.emailPre=''; ir('login'); } }
   else if(d.editfaz!==undefined){ E.fazEdit=d.editfaz||null; E.limparPend=null; render(); if(E.fazEdit) document.getElementById('fFaz')?.scrollIntoView({block:'start'}); }
   else if(d.limpafaz!==undefined){
     if(d.ok){ E.limparPend=null; limparFazenda(d.limpafaz); }
     else { E.limparPend=d.limpafaz||null; render(); } }
-  else if(d.regerar){ const f=usuario().fazendas.find(x=>x.id===d.regerar); if(f) regerarExemplo(f); }
-  else if(d.safra){ E.safraSel=+d.safra; render(); }
+  else if(d.regerar){ const f=usuario().fazendas.find(x=>x.id===d.regerar); if(f){ track('feature_used', {funcao:'regerar_exemplo'}); regerarExemplo(f); } }
+  else if(d.safra){ E.safraSel=+d.safra; track('feature_used', {funcao:'safra_trocada'}); render(); }
   else if(d.tal){ E.talSel=d.tal; E.ramSel=null; E.editar=null; E.confirmar=null; render(); }
   else if(d.fl){ E.flMode=d.fl; render(); }
   else if(d.ram!==undefined){ E.ramSel=d.ram||null; E.editar=null; E.confirmar=null; render(); if(E.ramSel) document.getElementById('cardRam')?.scrollIntoView({block:'nearest'}); }
@@ -134,10 +141,10 @@ app.addEventListener('click',async e=>{
   else if(d.aptal){ E.apTal=d.aptal; E.apSel=null; render(); }
   else if(d.apall){ document.querySelectorAll('#fAp input[name=ram]').forEach(c=>c.checked=d.apall==='1'); syncAp(); }
   else if(d.goap){ E.atual='floresta'; E.flMode='apontar'; E.opTipo=d.goap; E.apSel=null; render(); window.scrollTo(0,0); }
-  else if(d.reg){ salvar('fazendas', {id:SES.fid, regime:d.reg}); }
+  else if(d.reg){ track('feature_used', {funcao:'regime_alterado'}); salvar('fazendas', {id:SES.fid, regime:d.reg}); }
   else if(d.modo){ E.modoCaixa=d.modo; E.editar=null; E.confirmar=null; render(); }
   else if(d.tipo){ E.tipoLanc=d.tipo; render(); }
-  else if(d.realizar){ const c=S.comp.find(x=>x.id===d.realizar); if(!c) return;
+  else if(d.realizar){ const c=S.comp.find(x=>x.id===d.realizar); if(!c) return; track('feature_used', {funcao:'compromisso_pago'});
     salvarLote([['compromissos',{id:c.id, deleted_at:agoraIso()}], ['lancamentos', linha.lancamento({...c, id:uid(), data: c.data<hoje()? c.data : hoje()}, SES.fid)]]); }
   else if(d.emitir){ abrirEmissao(d.emitir); }
   else if(d.comnota){ E.aberta=d.comnota; salvar('vendas', {id:d.comnota, com_nota:true}); abrirEmissao(d.comnota); }
@@ -150,7 +157,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('toggle',e=>{ const d=e.target; if(!d.matches?.('details.venda')) return;
   if(d.open) E.aberta=d.dataset.venda; else if(E.aberta===d.dataset.venda) E.aberta=null; }, true);
 app.addEventListener('change',e=>{
-  if(e.target.id==='ideal'){ const v=+e.target.value; if(v>=7&&v<=30) salvar('fazendas', {id:SES.fid, intervalo_ideal:v}); }
+  if(e.target.id==='ideal'){ const v=+e.target.value; if(v>=7&&v<=30){ track('feature_used', {funcao:'intervalo_alterado'}); salvar('fazendas', {id:SES.fid, intervalo_ideal:v}); } }
   if(e.target.name==='ram') syncAp();
   if(e.target.name==='mod') syncMods(e.target);
 });
@@ -160,10 +167,10 @@ app.addEventListener('submit',async e=>{
   if(f==='fLogin'){ E.lAviso=''; E.lErro=''; const email=$('lEmail').value.trim().toLowerCase(), senha=$('lSenha').value, btn=e.target.querySelector('.btn');
     btn.disabled=true;
     try {
-      if(E.lMode==='entrar') return await aposLogin(await entrar(email, senha));
+      if(E.lMode==='entrar') return await aposLogin(await entrar(email, senha), 'senha');
       const modulos=Object.fromEntries(MODS.map(m=>[m.k, !!e.target.querySelector(`input[name=mod][value="${m.k}"]`)?.checked]));
       const u=await cadastrar($('lNome').value.trim(), email, senha, modulos);
-      if(u) return await aposLogin(u);
+      if(u) return await aposLogin(u, 'cadastro');
       /* confirmação de e-mail ligada no Supabase: a conta só entra depois do link */
       E.lMode='entrar'; E.emailPre=email; E.lAviso=`Enviamos um link para ${email}. Confirme e depois entre.`; return render();
     } catch(err){ btn.disabled=false; if(err.suspensa) apagarCacheDoEmail(email); return erro('lErr', err.message); } }
@@ -178,7 +185,8 @@ app.addEventListener('submit',async e=>{
     const campos={nome:$('zNome').value.trim(), ie, doc:soDig($('zDoc').value), municipio:$('zMun').value.trim(), uf}, regime=$('zReg').value;
     if(id){ E.fazEdit=null; salvar('fazendas', {id, ...campos, regime}); return; }
     const nova={id:uid(), ...campos};
-    if($('zEx').checked) salvarLote(linhasExemplo(nova, exemplo(2+Math.floor(Math.random()*997), null, regime)));
+    if($('zEx').checked){ track('record_created', {tabela:'fazendas'}); track('feature_used', {funcao:'dados_exemplo'});
+      salvarLote(linhasExemplo(nova, exemplo(2+Math.floor(Math.random()*997), null, regime)), {metrica:false}); }
     else salvar('fazendas', linha.fazenda(nova, {...vazio(), regime}));
     if(E.atual==='fazendas') usarFazenda(nova.id);
     return; }
@@ -247,6 +255,10 @@ window.addEventListener('online',async()=>{ if((await sincronizar()).offline) ag
 window.addEventListener('offline',()=>{ if(SES.L){ SES.sync='offline'; mostrarSync(); } });
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && SES.L) sincronizar(); });
 setInterval(()=>{ if(document.visibilityState==='visible' && SES.L) sincronizar(); }, 60000);
+/* tempo de uso: conta só com a aba visível e toque, tecla ou rolagem nos últimos 2 min */
+for (const ev of ['pointerdown','keydown','scroll']) window.addEventListener(ev, ()=>atividade(), {passive:true, capture:true});
+document.addEventListener('visibilitychange', ()=>tique(document.visibilityState==='hidden'));   // ao esconder, fecha o trecho em que estava visível
+setInterval(()=>tique(document.visibilityState==='visible'), 15000);
 
 /* abertura: sessão salva neste aparelho; sem rede, abre o cache do último usuário */
 async function iniciar(){
@@ -255,6 +267,7 @@ async function iniciar(){
   if (s.estado==='bloqueado') return ult ? suspender(ult) : (E.lErro=SUSPENSA, E.atual='login', render());
   if (s.estado==='ok') abrirSessao(s.session.user.id, {email:s.session.user.email, nome:s.session.user.user_metadata?.nome||''});
   else if (ult && (s.estado==='offline' || !navigator.onLine)) abrirSessao(ult);   // sem rede (ou rede ruim): abre o cache
+  if (SES.L) track('app_open', {online:navigator.onLine});
   E.atual = SES.L ? 'fazendas' : 'login';
   render();
   if (SES.L && (await sincronizar()).ok) prepararExemplo();

@@ -21,6 +21,7 @@ App de gestão financeira e de produção para **pequenos produtores de pinus e 
 | `regras.js` | Constantes do negócio e cálculos sobre o `S` da fazenda aberta (`usarDados`) |
 | `exemplo.js` | Gera dados de exemplo relativos a hoje |
 | `local.js` | Cache por usuário, fila, `gravar`/`excluir`/`mesclar` |
+| `metricas.js` | Telemetria: `track(evento, props)`, sessões e tempo de uso, fila própria e envio em lote (catálogo em `docs/metricas.md`) |
 | `mapa.js` | Linhas do banco ⇄ formato `S` das telas (`montarDados`, `linha.*`) |
 | `nuvem.js` | Cliente Supabase, login, `enviar`/`buscar`/`sincronizar` |
 | `estado.js` | Sessão, estado da tela (`E`), `salvar`/`salvarLote`/`apagar`, agenda da sincronização, conta de exemplo |
@@ -33,6 +34,8 @@ As telas leem `S` (formato em memória); **toda gravação passa por `salvar(tab
 - Esquema em `supabase/migrations/`: `0001_inicial.sql` e `0002_sincronizacao_e_seguranca.sql` (`clock_timestamp()`, índices `(user_id, updated_at, id)`, `search_path` e `revoke` de `criar_perfil`). Mudança de esquema = nova migração numerada.
 - `0003_admin.sql`: tabela `admins` (papel de admin, só no servidor), `eh_admin()`, `auditoria`, colunas `is_demo`/`bloqueado`/`motivo_bloqueio`/`trocar_senha` em `perfis` (o gatilho `proteger_perfil` impede o usuário de mudá-las) e `encerrar_sessoes()` (só `service_role`).
 - Edge Function `supabase/functions/admin-acoes` (bloquear/desbloquear): confere que quem chama está em `admins`, usa a chave de serviço (só no servidor) e grava a `auditoria`. Primeiro admin: `supabase/admin-inicial.sql`. Teste: `supabase/teste-admin.mjs`.
+- `0004_metricas.sql`: tabelas `eventos` e `sessoes` (ninguém lê ou grava pela API) e `registrar_uso()`, que grava o lote em nome de quem está logado, marca `is_demo` e valida o formato. Teste: `supabase/teste-metricas.mjs`.
+- `supabase/gerenciar.sh sql <arquivo>` aplica SQL no projeto pela API de gerenciamento.
 - Conta suspensa: o bloqueio encerra as sessões, então a renovação volta "sessão não encontrada" e o app pede para entrar de novo (o token já emitido vale até 15 min). O login volta `user_banned`: o app mostra "Conta suspensa, entre em contato." e apaga o cache daquela conta no aparelho (pelo e-mail).
 - `npm test` roda os testes com `node --test` (sem instalar nada). `supabase/teste-rls.mjs` verifica o isolamento entre contas.
 - Para rodar localmente: `python3 -m http.server` na raiz e abrir `http://localhost:8000`.
@@ -120,7 +123,8 @@ Cada venda guarda o `fator` do regime da época (Funrural 0,9837 / folha 0,998):
 
 ## Cuidados
 
+- **Métricas**: nunca registrar conteúdo (valores, descrições, nomes); só o fato. Evento ou função nova entra no `CATALOGO` de `metricas.js` e em `docs/metricas.md`. Lotes que o produtor não digitou usam `salvarLote(itens, {metrica:false})`.
 - Não quebrar a conta de exemplo nem os dados gerados por `exemplo()`; eles são usados nas demonstrações.
 - Mudanças de modelo de dados precisam de migração no Supabase e, se mudar o formato do cache, de nova chave de armazenamento local.
-- Ao adicionar um arquivo em `js/` ou mudar o `sw.js`, inclua o arquivo na lista `CASCA` e troque a versão do cache (hoje `caderno-v2` → `v3`).
+- Ao adicionar um arquivo em `js/` ou mudar o `sw.js`, inclua o arquivo na lista `CASCA` e troque a versão do cache (hoje `caderno-v3` → `v4`).
 - Valores em R$ com `toLocaleString('pt-BR')`; datas internas em `AAAA-MM-DD`.

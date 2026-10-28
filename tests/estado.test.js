@@ -35,3 +35,19 @@ test('campos da NF-e são escapados na tela de vendas', () => {
   const html = V.vendas();
   for (const mau of ['<img', '<b>s', '<i>c', '<script']) assert.ok(!html.includes(mau), mau);
 });
+
+test('gravações viram métricas só com tipo e tabela; dados de exemplo não contam', async () => {
+  const { estadoMetricas } = await import('../js/metricas.js');
+  const M = () => estadoMetricas();
+  M().fila.length = 0;
+  const t = { id: '00000000-0000-4000-8000-0000000000t1', fazenda_id: FID, nome: 'Talhão Métrica' };
+  est.salvar('talhoes', t);
+  est.salvar('talhoes', { id: t.id, nome: 'Outro nome' });
+  est.apagar([['talhoes', t.id], ['talhoes', 'nao-existe']]);
+  assert.deepEqual(M().fila.map(e => [e.evento, e.props]), [
+    ['record_created', { tabela: 'talhoes' }], ['record_updated', { tabela: 'talhoes' }], ['record_deleted', { tabela: 'talhoes' }]]);
+  assert.ok(!JSON.stringify(M().fila).includes('Talhão Métrica'));
+  M().fila.length = 0;
+  est.regerarExemplo(est.usuario().fazendas.find(f => f.id === FID));
+  assert.deepEqual(M().fila, []);
+});

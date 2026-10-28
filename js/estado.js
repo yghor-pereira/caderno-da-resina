@@ -3,6 +3,7 @@ import { usarDados } from './regras.js';
 import { exemplo } from './exemplo.js';
 import { apagarCache, abrir, gravar, gravarLote, excluirLote, definirMeta, pendentes, erros, definirUltimo } from './local.js';
 import { linha, dadosParaLinhas, fazendasDe, linhasDaFazenda } from './mapa.js';
+import { abrirMetricas, fecharMetricas, apagarMetricas, track, enviarMetricas } from './metricas.js';
 import { SUSPENSA, criarNuvem, conectar, sessao, sair as sairNuvem } from './nuvem.js';
 
 /* ---------- funções do app (cada usuário liga e desliga em Conta) ---------- */
@@ -46,11 +47,13 @@ function abrirSessao(userId, meta={}){
   SES.L = abrir(userId); SES.fid = null; SES.nuvem = null; SES.sync = 'ok';
   definirUltimo(userId);
   if (meta.email) definirMeta(SES.L, meta);
+  abrirMetricas(userId);
   recarregar();
 }
 async function fecharSessao(){
   clearTimeout(timer);
   SES.L = null; SES.fid = null; SES.nuvem = null;   // primeiro: uma sincronização em andamento para de gravar
+  fecharMetricas();
   definirUltimo(null);
   recarregar();
   await sairNuvem();
@@ -58,20 +61,31 @@ async function fecharSessao(){
 /* conta suspensa por um administrador: sai, apaga o cache deste aparelho e avisa na entrada */
 async function suspender(userId){
   if (SES.L?.userId===userId) await fecharSessao(); else await sairNuvem();
-  apagarCache(userId); definirUltimo(null);
+  apagarCache(userId); apagarMetricas(userId); definirUltimo(null);
   E.lErro = SUSPENSA; E.lAviso = ''; E.lMode = 'entrar'; E.atual = 'login';
   E.render();
 }
 function usarFazendaId(fid){ SES.fid = fid; recarregar(); }
 
 /* ---------- gravações: cache local + fila; a sincronização vem logo depois ---------- */
-function salvar(tabela, l){ gravar(SES.L, tabela, l); recarregar(); E.render(); agendar(); }
-function salvarLote(itens){ gravarLote(SES.L, itens); recarregar(); E.render(); agendar(); }
-function apagar(itens){ excluirLote(SES.L, itens); recarregar(); E.render(); agendar(); }
+/* métrica de cada gravação: só o tipo e a tabela (e a quantidade, num lote), nunca o conteúdo */
+function medir(itens, tipo){
+  const n = {};
+  for (const [t,l] of itens) {
+    const ev = tipo || (!SES.L.linhas[t]?.[l.id] ? 'record_created' : l.deleted_at ? 'record_deleted' : 'record_updated');
+    n[ev+' '+t] = (n[ev+' '+t]||0) + 1;
+  }
+  for (const [k, qtd] of Object.entries(n)) { const [ev, tabela] = k.split(' '); track(ev, qtd>1 ? {tabela, qtd} : {tabela}); }
+}
+function salvar(tabela, l){ medir([[tabela, l]]); gravar(SES.L, tabela, l); recarregar(); E.render(); agendar(); }
+/* {metrica:false}: lotes que não são registros do produtor (dados de exemplo, limpeza) */
+function salvarLote(itens, {metrica=true}={}){ if (metrica) medir(itens); gravarLote(SES.L, itens); recarregar(); E.render(); agendar(); }
+function apagar(itens){ medir(itens.filter(([t,id])=>SES.L.linhas[t]?.[id]).map(([t,id])=>[t,{id}]), 'record_deleted'); excluirLote(SES.L, itens); recarregar(); E.render(); agendar(); }
 /* apaga todos os registros da fazenda; o cadastro fica, sem saldo inicial e sem marca de exemplo */
 function limparFazenda(fid){
   const agora = new Date().toISOString();
-  salvarLote([...linhasDaFazenda(SES.L, fid).map(([t,id])=>[t,{id, deleted_at:agora}]), ['fazendas',{id:fid, demo:false, saldo_inicial:0}]]);
+  track('feature_used', {funcao:'limpar_fazenda'});
+  salvarLote([...linhasDaFazenda(SES.L, fid).map(([t,id])=>[t,{id, deleted_at:agora}]), ['fazendas',{id:fid, demo:false, saldo_inicial:0}]], {metrica:false});
 }
 
 /* ---------- sincronização ---------- */
@@ -88,7 +102,10 @@ async function sincronizar(){
     if (s.estado==='bloqueado') { await suspender(L.userId); return {ok:false, bloqueado:true}; }
     if (s.estado==='offline') r = {ok:false, offline:true};
     else if (s.estado!=='ok' || s.session.user.id!==L.userId) r = {ok:false, sessao:false};
-    else { SES.nuvem ??= criarNuvem(await conectar(), L, {ativo:()=>SES.L===L}); r = await SES.nuvem.sincronizar(); }
+    else {
+      SES.nuvem ??= criarNuvem(await conectar(), L, {ativo:()=>SES.L===L}); r = await SES.nuvem.sincronizar();
+      if (!r.offline && r.sessao!==false && !r.parado) enviarMetricas(await conectar());   // não espera: métrica nunca atrasa os dados
+    }
   } catch(e) { r = {ok:false, offline:true}; }
   if (SES.L!==L) return r;           // trocou de usuário no meio do caminho
   const nErros = erros(L).length;
@@ -115,14 +132,14 @@ function linhasExemplo(f, dados){
 function regerarExemplo(f){
   const c = EX_FAZ.find(x=>x.ie===f.ie);
   excluirLote(SES.L, linhasDaFazenda(SES.L, f.id));
-  salvarLote(linhasExemplo(f, exemplo(c?.seed ?? 2+Math.floor(Math.random()*997), c?.defs, f.dados.regime)));
+  salvarLote(linhasExemplo(f, exemplo(c?.seed ?? 2+Math.floor(Math.random()*997), c?.defs, f.dados.regime)), {metrica:false});
 }
 /* na conta de exemplo: cria as duas fazendas na primeira vez e renova dados com mais de 7 dias */
 function prepararExemplo(){
   const u = usuario();
   if (u?.email!==EX.email) return;
   if (!u.fazendas.length) {
-    salvarLote(EX_FAZ.flatMap(c=>linhasExemplo({id:uid(), nome:c.nome, ie:c.ie, doc:'', municipio:c.municipio, uf:c.uf}, exemplo(c.seed, c.defs))));
+    salvarLote(EX_FAZ.flatMap(c=>linhasExemplo({id:uid(), nome:c.nome, ie:c.ie, doc:'', municipio:c.municipio, uf:c.uf}, exemplo(c.seed, c.defs))), {metrica:false});
     return;
   }
   for (const f of u.fazendas) if (f.demo && (!f.demo_gerado_em || diff(f.demo_gerado_em, hoje())>7)) regerarExemplo(f);

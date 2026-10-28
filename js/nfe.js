@@ -2,6 +2,7 @@ import { brl, num, esc, hoje, uid } from './util.js';
 import { totalV, chave, S } from './regras.js';
 import { salvarLote, fazAtual, SES, E } from './estado.js';
 import { linha } from './mapa.js';
+import { track } from './metricas.js';
 
 /* ---------- NF-e (simulada) ---------- */
 function proxNumero(){ return S.vendas.reduce((m,v)=>v.nf? Math.max(m,v.nf.numero):m,0)+1; }
@@ -79,7 +80,7 @@ function abrirEmissao(id){
     const d=soDig(docEl.value);
     if(d.length===11){ dest=null; aviso('CPF não tem consulta pública: confira o nome e o endereço com o comprador.'); return; }
     if(!cnpjValido(d)){ dest=null; aviso('CNPJ inválido: confira os números digitados.',true); return; }
-    btn.disabled=true; btn.textContent='Buscando…'; aviso('Consultando a Receita Federal…');
+    btn.disabled=true; btn.textContent='Buscando…'; aviso('Consultando a Receita Federal…'); track('feature_used', {funcao:'cnpj_consultado'});
     try{ dest=await buscarCnpj(d); mostra(); }
     catch(e){ dest=null; aviso(e.message,true); }
     finally{ btn.disabled=false; btn.textContent='Buscar CNPJ'; }
@@ -99,6 +100,7 @@ function abrirEmissao(id){
           cfop:q('#nfCfop').value,chave:chave(),protocolo:'1352'+Date.now().toString().slice(-11)};
     const comp={id:conhecido?.id||uid(), doc:mascaraDoc(d), dest};
     E.aberta=v.id; dlg.onclose=null; dlg.close();
+    track('feature_used', {funcao:'nfe_emitida'});
     salvarLote([['vendas',{id:v.id, nf}], ['compradores', linha.comprador(v.comprador, comp, SES.fid)]]);
   });
 }
