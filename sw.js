@@ -1,9 +1,9 @@
 /* Caderno da Resina: guarda a casca do app para abrir sem internet.
    Arquivos do app: rede primeiro (pega a versão nova quando há sinal), cache como reserva.
    Biblioteca e fontes: cache primeiro. Supabase e consultas de CNPJ passam direto. */
-const CACHE = 'caderno-v4';
+const CACHE = 'caderno-v5';
 const CASCA = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icone.svg',
-  ...['app','config','doc','estado','exemplo','graficos','ie','local','mapa','metricas','nfe','nuvem','regras','telas','util'].map(m => `js/${m}.js`)];
+  ...['app','config','doc','estado','exemplo','graficos','ie','local','mapa','metricas','nfe','nuvem','regras','relatorios','telas','util'].map(m => `js/${m}.js`)];
 const BIBLIOTECA = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const CACHE_PRIMEIRO = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 

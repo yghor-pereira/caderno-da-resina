@@ -180,3 +180,4 @@ details.mais small.note{font-size:.72rem}
 .fsel{flex-direction:row;align-items:center;gap:8px}
 .fsel select{padding:7px 10px;width:auto;flex:1;min-width:0}
 optgroup{font-style:normal;font-weight:700}
+.rec b,.row .a{white-space:nowrap}

@@ -21,6 +21,7 @@ App de gestão financeira e de produção para **pequenos produtores de pinus e 
 | `ie.js` | Dígito verificador da Inscrição Estadual das 27 UFs (`ieValida`) |
 | `regras.js` | Constantes do negócio e cálculos sobre o `S` da fazenda aberta (`usarDados`) |
 | `exemplo.js` | Gera dados de exemplo relativos a hoje |
+| `relatorios.js` | Relatórios (funções puras): `movimentos` por período e base (competência ou caixa, já com o rateio), `porEntidade`, `porFazenda`, `producaoMensal`, `matrizVendas`, `resina`, `periodo` |
 | `local.js` | Cache por usuário, fila, `gravar`/`excluir`/`mesclar` |
 | `metricas.js` | Telemetria: `track(evento, props)`, sessões e tempo de uso, fila própria e envio em lote (catálogo em `docs/metricas.md`) |
 | `mapa.js` | Linhas do banco ⇄ formato `S` das telas (`montarDados(L, {fazenda, entidade})`, `entidadesDe` com inscrições, contas e saldos, `fazendasDe`, `linha.*`) |
@@ -108,6 +109,8 @@ Funções desligadas só escondem as telas; nenhum registro é apagado. A Iníci
 - Abas do rodapé: **Início** (global), **Fazendas** (lista; ao abrir uma fazenda: Floresta, Produção, Perdas e Cadastro), **Vendas**, **Financeiro** (pagos e recebidos, a pagar e a receber, saldos das contas) e **Resultado**. Não se escolhe fazenda ao entrar.
 - **CPFs, CNPJs e contas** (tela `cadastros`, pela Conta): CPFs/CNPJs com máscara e dígito verificador, regime tributário e previdenciário, inscrições estaduais e contas bancárias com saldo inicial. **Declarações de IR**: só o aviso "em desenvolvimento, será disponibilizado em futuras versões".
 - Financeiro e Vendas têm **Selecionar para mover**: move vários registros de uma vez para outro CPF/CNPJ e/ou outra fazenda (a venda que muda de CPF/CNPJ troca também a inscrição).
+- **Resultado → Relatórios**: período (as duas últimas safras, os dois últimos anos ou de/até) e base (**competência**: venda pela data da venda, lançamento pela competência; **caixa**: venda pelo recebimento, lançamento pelo pagamento). Mostra o consolidado, **por CPF/CNPJ** (com o total vendido de cada um, para o teto de faturamento), **por fazenda** (com a linha Geral), **produção por mês** por fazenda e a **venda cruzada** fazenda × quem emitiu. Respeita os filtros do topo. As somas por CPF/CNPJ e por fazenda fecham com o consolidado.
+- **Rateio**: na edição de um lançamento, "Dividir entre fazendas" (% por fazenda, até 100%; o resto fica na fazenda do lançamento ou em Geral). Os relatórios por fazenda usam a divisão; ao marcar um compromisso como pago, a divisão vai junto.
 - Cada usuário vê **somente os próprios registros**.
 
 ## Modelo de dados em memória (formato `S` das telas; as tabelas estão na migração)
@@ -132,7 +135,8 @@ dados   { (S: montarDados(L, {fazenda, entidade}); a aba Fazendas usa dadosFazen
                    contraparteNome, contraparteDoc, catIr, anexo } ],   // pagos e recebidos
           comp[ { ...mesmos campos do caixa } ],                        // a pagar e a receber
           todas{ vendas, caixa, comp },                                 // só com o filtro de fazenda (estoque, comparativos)
-          compradores{ nome: {doc, dest} } }                            // globais
+          compradores{ nome: {doc, dest} },                             // globais
+          rateios{ idLançamento: [ {id, fazenda, percentual} ] } }
 ```
 
 Cada venda guarda o `fator` do regime da época (Funrural 0,9837 / folha 0,998): trocar o regime da fazenda só vale para vendas novas.
@@ -150,5 +154,5 @@ Cada venda guarda o `fator` do regime da época (Funrural 0,9837 / folha 0,998):
 - **Métricas**: nunca registrar conteúdo (valores, descrições, nomes); só o fato. Evento ou função nova entra no `CATALOGO` de `metricas.js` e em `docs/metricas.md`. Lotes que o produtor não digitou usam `salvarLote(itens, {metrica:false})`.
 - Não quebrar a conta de exemplo nem os dados gerados por `exemplo()`; eles são usados nas demonstrações.
 - Mudanças de modelo de dados precisam de migração no Supabase e, se mudar o formato do cache, de nova chave de armazenamento local.
-- Ao adicionar um arquivo em `js/` ou mudar o `sw.js`, inclua o arquivo na lista `CASCA` e troque a versão do cache (hoje `caderno-v4` → `v5`).
+- Ao adicionar um arquivo em `js/` ou mudar o `sw.js`, inclua o arquivo na lista `CASCA` e troque a versão do cache (hoje `caderno-v5` → `v6`).
 - Valores em R$ com `toLocaleString('pt-BR')`; datas internas em `AAAA-MM-DD`.

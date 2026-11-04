@@ -106,7 +106,7 @@ function render(op){
   if (E.atual==='login' && E.emailPre) { const el=document.getElementById('lEmail'); if (el) el.value=E.emailPre; }
   mostrarSync(); syncAp(); syncVenda();
   /* métrica de tela: uma por troca de tela (ou de aba interna de Financeiro e Floresta) */
-  const modo = E.atual==='floresta' ? E.flMode : E.atual==='caixa' ? E.modoCaixa : null, tela = E.atual+(modo?':'+modo:'');
+  const modo = E.atual==='floresta' ? E.flMode : E.atual==='caixa' ? E.modoCaixa : E.atual==='resultado' && E.modoRes==='rel' ? 'relatorios' : null, tela = E.atual+(modo?':'+modo:'');
   if (u && tela!==telaMedida) track('page_view', {tela:E.atual, ...(modo?{modo}:{})});
   telaMedida = u ? tela : null;
 }
@@ -134,6 +134,7 @@ document.getElementById('limpar').addEventListener('click',()=>{ const f=fazAtua
 /* registros a apagar junto (filhos) quando o produtor exclui algo */
 function itensExcluir(tab, id){
   if (tab==='talhoes') return linhasDoTalhao(SES.L, id);
+  if (tab==='lancamentos' || tab==='compromissos') return [[tab,id], ...(S.rateios[id]||[]).map(r=>['rateios',r.id])];
   if (tab==='vendas') return [['vendas',id], ...(S.vendas.find(v=>v.id===id)?.recs||[]).map(r=>['recebimentos',r.id])];
   if (tab==='ramais') { const r=S.talhoes.flatMap(t=>t.ramais).find(x=>x.id===id); return [['ramais',id], ...(r?.hist||[]).map(h=>['contagens',h.id])]; }
   return [[tab,id]];
@@ -166,15 +167,20 @@ app.addEventListener('click',async e=>{
   else if(d.aptal){ E.apTal=d.aptal; E.apSel=null; render(); }
   else if(d.apall){ document.querySelectorAll('#fAp input[name=ram]').forEach(c=>c.checked=d.apall==='1'); syncAp(); }
   else if(d.goap){ E.atual='floresta'; E.flMode='apontar'; E.opTipo=d.goap; E.apSel=null; render(); window.scrollTo(0,0); }
+  else if(d.modores){ E.modoRes=d.modores; render(); }
+  else if(d.per){ const [tipo, ano]=d.per.split(':'); E.periodo={...E.periodo, tipo, ano:ano?+ano:null}; track('feature_used', {funcao:'periodo_alterado', tipo}); render(); }
+  else if(d.base){ E.periodo={...E.periodo, base:d.base}; track('feature_used', {funcao:'periodo_alterado', base:d.base}); render(); }
   else if(d.modo){ E.modoCaixa=d.modo; E.editar=null; E.confirmar=null; E.sel=null; render(); }
   else if(d.tipo){ E.tipoLanc=d.tipo; render(); }
   else if(d.sel!==undefined){ E.sel = d.sel ? {tab:d.sel, ids:new Set()} : null; E.editar=null; E.confirmar=null; render(); }
   else if(d.selall){ document.querySelectorAll('input[name=selid]').forEach(c=>c.checked=d.selall==='1'); syncSel(); }
   else if(d.realizar){ const c=S.comp.find(x=>x.id===d.realizar); if(!c) return; track('feature_used', {funcao:'compromisso_pago'});
     /* o pagamento entra com a data de hoje (ou a do vencimento, se já passou), na conta do CPF/CNPJ; a competência é a do compromisso */
-    const ent=usuario().entidades.find(x=>x.id===c.entidade);
-    salvarLote([['compromissos',{id:c.id, deleted_at:agoraIso()}], ['lancamentos', linha.lancamento({...c, id:uid(), competencia:c.competencia||c.data,
-      data: c.data<hoje()? c.data : hoje(), conta:contaPara(ent)?.id||null})]]); }
+    const ent=usuario().entidades.find(x=>x.id===c.entidade), novo=uid();
+    /* a divisão entre fazendas acompanha o lançamento */
+    const rats=(S.rateios[c.id]||[]).flatMap(r=>[['rateios',{id:r.id, deleted_at:agoraIso()}], ['rateios', linha.rateio({id:uid(), fazenda:r.fazenda, percentual:r.percentual}, novo)]]);
+    salvarLote([['compromissos',{id:c.id, deleted_at:agoraIso()}], ['lancamentos', linha.lancamento({...c, id:novo, competencia:c.competencia||c.data,
+      data: c.data<hoje()? c.data : hoje(), conta:contaPara(ent)?.id||null})], ...rats]); }
   else if(d.emitir){ abrirEmissao(d.emitir); }
   else if(d.comnota){ E.aberta=d.comnota; salvar('vendas', {id:d.comnota, com_nota:true}); abrirEmissao(d.comnota); }
   else if(d.excluir!==undefined){
@@ -289,6 +295,7 @@ app.addEventListener('submit',async e=>{
     track('feature_used', {funcao:'mover_lote', tabela:tab, qtd:ids.length});
     E.sel=null;
     return salvarLote(itens, {metrica:false}); }
+  if(f==='fPeriodo'){ E.periodo={...E.periodo, tipo:'livre', de:el('de').value, ate:el('ate').value}; if(E.periodo.ate<E.periodo.de) return erro(null, 'O fim é antes do início.'); return render(); }
   if(f==='fPerda'){ return salvar('perdas', linha.perda({id:uid(), data:el('data').value, kg:+el('kg').value, motivo:el('motivo').value, talhao:el('tal').value||null,
     obs:el('obs').value.trim()}, E.fazSel)); }
   if(f==='fAp'){ const t=talById(E.apTal), ids=[...E.apSel];
@@ -328,8 +335,17 @@ app.addEventListener('submit',async e=>{
     return;
   }
   if(fm.classList.contains('fEdLanc')){ const dc=lerDoc(el); if(dc.erro) return erro(null, dc.erro);
-    const tipo=fm.dataset.tipo, cat=el('cat').value;
+    const tipo=fm.dataset.tipo, cat=el('cat').value, id=fm.dataset.id;
+    /* rateio: % por fazenda; soma até 100 (o resto fica onde o lançamento está) */
+    const rat=[...fm.querySelectorAll('input[name^="rat:"]')].map(i=>({fazenda:i.name.slice(4), percentual:+i.value||0}));
+    if(sum(rat, r=>r.percentual)>100.001) return erro(null, 'A divisão entre fazendas passa de 100%.');
+    if(rat.some(r=>r.percentual<0)) return erro(null, 'O percentual não pode ser negativo.');
+    const antes=S.rateios[id]||[], agora=agoraIso;
+    const itensRat = !rat.length ? [] : [
+      ...antes.filter(a=>!rat.some(r=>r.fazenda===a.fazenda && r.percentual>0)).map(a=>['rateios', {id:a.id, deleted_at:agora()}]),
+      ...rat.filter(r=>r.percentual>0).map(r=>['rateios', linha.rateio({id:antes.find(a=>a.fazenda===r.fazenda)?.id||uid(), fazenda:r.fazenda, percentual:r.percentual}, id, fm.dataset.tab)])];
     E.editar=null;
+    if(itensRat.length) salvarLote(itensRat, {metrica:false});
     return salvar(fm.dataset.tab, {id:fm.dataset.id, data:el('data').value, valor:+el('valor').value, cat, descr:el('desc').value.trim(),
       ...(el('ent')?{entidade_id:el('ent').value}:{}), fazenda_id:el('faz').value||null,
       data_competencia:dc.competencia||el('data').value, categoria_irpf:dc.catIr||catIrDe({tipo, cat}), tipo_documento:dc.tipoDoc, numero_documento:dc.numDoc,

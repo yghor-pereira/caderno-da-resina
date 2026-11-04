@@ -53,7 +53,9 @@ function montarDados(L, {fazenda=null, entidade=null}={}){
     producao: daFaz('coletas').filter(op).map(p=>({id:p.id, data:p.data, talhao:p.talhao_id, ramais:p.ramais, kg:+p.kg})),
     perdas: daFaz('perdas').map(p=>({id:p.id, data:p.data, fazenda:p.fazenda_id, talhao:p.talhao_id||null, kg:+p.kg, motivo:p.motivo, obs:p.obs||''})),
     vendas: todas.vendas.filter(filtro), caixa: todas.caixa.filter(filtro), comp: todas.comp.filter(filtro), todas,
-    compradores: Object.fromEntries(ativas(L,'compradores').map(c=>[c.nome, {id:c.id, doc:c.doc, dest:c.dest||null}]))
+    compradores: Object.fromEntries(ativas(L,'compradores').map(c=>[c.nome, {id:c.id, doc:c.doc, dest:c.dest||null}])),
+    /* divisão de lançamentos entre fazendas: id do lançamento → [{id, fazenda, percentual}] */
+    rateios: ativas(L,'rateios').reduce((m,r)=>((m[r.lancamento_id] ??= []).push({id:r.id, fazenda:r.fazenda_id, percentual:+r.percentual}), m), {})
   };
 }
 
@@ -83,6 +85,7 @@ const linha = {
     descr:x.desc||'', valor:x.valor, data_competencia:x.competencia||x.data, tipo_documento:nulo(x.tipoDoc), numero_documento:x.numDoc||'',
     contraparte_documento:x.contraparteDoc||'', contraparte_nome:x.contraparteNome||'', categoria_irpf:x.catIr||catIrDe(x),
     conta_bancaria_id:nulo(x.conta), anexo_url:nulo(x.anexo)}),
+  rateio: (r, lid, tabela='lancamentos') => ({id:r.id, tabela, lancamento_id:lid, fazenda_id:r.fazenda, percentual:r.percentual}),
   /* compradores são globais */
   comprador: (nome, c) => ({id:c.id, fazenda_id:null, nome, doc:c.doc||'', dest:c.dest||null})
 };

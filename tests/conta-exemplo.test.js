@@ -107,3 +107,15 @@ test('telas: cadastros financeiros e declarações em desenvolvimento; perdas e 
   est.E.atual = 'inicio'; est.recarregar();
   assert.match(V.inicio(), /Geral \(sem fazenda\)/, 'o comparativo do Início mostra as despesas gerais');
 });
+
+test('telas: relatórios por CPF/CNPJ, por fazenda, produção por mês e venda cruzada', () => {
+  est.E.atual = 'resultado'; est.E.modoRes = 'rel'; est.recarregar();
+  const html = V.resultado();
+  for (const t of ['Por CPF/CNPJ', 'Por fazenda', 'Produção por mês', 'Venda cruzada', 'Geral (sem fazenda)', 'CPF João', 'Resinas Silva'])
+    assert.ok(html.includes(t), t);
+  est.E.periodo = { ...est.E.periodo, base: 'caixa' };
+  assert.match(V.resultado(), /<b>Caixa<\/b>: vendas pelo que foi recebido/);
+  est.E.periodo = { tipo: 'livre', de: '2026-03-01', ate: '2026-05-31', base: 'competencia' };
+  assert.match(V.resultado(), /01\/03\/2026 a 31\/05\/2026/);
+  est.E.modoRes = 'margem';
+});

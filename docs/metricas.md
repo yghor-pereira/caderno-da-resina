@@ -40,7 +40,7 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `feature_used` | usou uma função que não é só gravar | `funcao` (abaixo); `modulo` em `funcao_ligada`/`funcao_desligada` |
 | `export` | reservado: o app ainda não exporta nada | — |
 
-**Telas** (`tela` ou `tela:modo`): `fazendas` (lista de fazendas), `fazenda` (cadastro de uma fazenda), `perdas`, `conta`, `cadastros` (CPFs, CNPJs e contas), `caixa:contas` (saldos das contas), `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
+**Telas** (`tela` ou `tela:modo`): `fazendas` (lista de fazendas), `fazenda` (cadastro de uma fazenda), `perdas`, `conta`, `cadastros` (CPFs, CNPJs e contas), `caixa:contas` (saldos das contas), `resultado:relatorios`, `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
 
 **Tabelas** (`record_*`): `perfis`, `entidades_fiscais`, `inscricoes_estaduais`, `contas_bancarias`, `fazendas`, `talhoes`, `ramais`, `contagens`, `estrias`, `coletas`, `perdas`, `vendas`, `recebimentos`, `lancamentos`, `compromissos`, `compradores`, `rateios`.
 
@@ -62,6 +62,7 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `entidade_filtrada` | escolheu um CPF/CNPJ (ou "Todos", com `todos: true`) no filtro do topo |
 | `fazenda_filtrada` | escolheu uma fazenda (ou todas, com `todos: true`) no filtro do topo |
 | `mover_lote` | moveu registros em lote para outro CPF/CNPJ ou outra fazenda (`tabela`, `qtd`) |
+| `periodo_alterado` | trocou o período (`tipo`: safra, ano, livre) ou a base (`base`: competencia, caixa) dos relatórios |
 
 Os dados de exemplo e a limpeza de fazenda **não** geram `record_*` (seriam centenas de registros que o produtor não digitou); geram só o `feature_used` correspondente.
 

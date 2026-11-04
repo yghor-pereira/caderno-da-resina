@@ -49,7 +49,7 @@ function quando(iso, agora = Date.now()){
 
 /* nomes do catálogo de métricas na linguagem do produtor */
 const NOMES_TELA = {fazendas:'Fazendas', fazenda:'Cadastro da fazenda', perdas:'Perdas', geral:'Visão geral', conta:'Conta', cadastros:'CPFs, CNPJs e contas',
-  'caixa:contas':'Financeiro · saldos das contas', senha:'Troca de senha', inicio:'Início',
+  'caixa:contas':'Financeiro · saldos das contas', 'resultado:relatorios':'Resultado · relatórios', senha:'Troca de senha', inicio:'Início',
   'caixa:real':'Financeiro · pagos e recebidos', 'caixa:comp':'Financeiro · a pagar e a receber', 'floresta:ramais':'Floresta · talhões e ramais',
   'floresta:apontar':'Floresta · apontar', 'floresta:estrias':'Floresta · estrias', producao:'Produção', vendas:'Vendas', resultado:'Resultado'};
 const NOMES_TABELA = {perfis:'perfil', entidades_fiscais:'CPF/CNPJ', inscricoes_estaduais:'inscrição estadual', contas_bancarias:'conta bancária',
@@ -59,7 +59,7 @@ const NOMES_FUNCAO = {dados_exemplo:'Começou com dados de exemplo', regerar_exe
   compromisso_pago:'Marcou compromisso como pago', regime_alterado:'Trocou o regime (Funrural/folha)', intervalo_alterado:'Mudou o intervalo ideal',
   funcao_ligada:'Ligou uma função', funcao_desligada:'Desligou uma função', safra_trocada:'Trocou a safra nos gráficos',
   nfe_emitida:'Emitiu NF-e', cnpj_consultado:'Consultou CNPJ', sincronizar_manual:'Sincronizou manualmente',
-  entidade_filtrada:'Filtrou por CPF/CNPJ', fazenda_filtrada:'Filtrou por fazenda', mover_lote:'Moveu registros em lote'};
+  entidade_filtrada:'Filtrou por CPF/CNPJ', fazenda_filtrada:'Filtrou por fazenda', mover_lote:'Moveu registros em lote', periodo_alterado:'Trocou o período ou a base do relatório'};
 const VERBO = {record_created:'Criou', record_updated:'Alterou', record_deleted:'Excluiu'};
 function rotulo(evento, item){
   if (evento === 'page_view') return 'Abriu ' + (NOMES_TELA[item] || item);

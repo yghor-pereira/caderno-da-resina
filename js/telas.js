@@ -2,7 +2,8 @@ import { brl, num, plural, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, sa
 import { CAT_IR, catIrDe, TIPOS_DOC, REGIMES_TRIB, CORES_ENT, MERCADO, DICAS, SAFRA, CATS_D, CATS_R, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
-import { MODS, MOD_PADRAO, usuario, dadosFazenda, fazAtual, mod, CUR, E, EX, SES, nPendentes, listaErros, nomeEnt, emitentePadrao, inscricaoPara, contaPara } from './estado.js';
+import { movimentos, resumir, porEntidade, porFazenda, producaoMensal, matrizVendas, somaMatriz, resina, periodo } from './relatorios.js';
+import { MODS, MOD_PADRAO, usuario, dadosFazenda, dadosRelatorio, fazAtual, mod, CUR, E, EX, SES, nPendentes, listaErros, nomeEnt, emitentePadrao, inscricaoPara, contaPara } from './estado.js';
 import { mascaraDoc } from './doc.js';
 
 const safras = () => [...new Set([CUR, ...S.producao.map(p=>safraIni(p.data)), ...S.estrias.map(e=>safraIni(e.data))])].sort();
@@ -60,6 +61,14 @@ function docCampos(x={}, tipo='d'){
     <label>${tipo==='r'?'Quem pagou':'Quem recebeu (fornecedor)'}<input name="cnome" value="${esc(x.contraparteNome||'')}"></label>
     <label>CPF/CNPJ dele<input name="cdoc" inputmode="numeric" data-mask="doc" value="${esc(x.contraparteDoc?mascaraDoc(x.contraparteDoc):'')}"></label>
   </div></details>`;
+}
+/* rateio: divide um lançamento entre as fazendas, em %; o que não for dividido fica onde o lançamento está */
+function rateioCampos(x){
+  const fs=usuario()?.fazendas||[]; if (fs.length<2) return '';
+  const rs=S.rateios?.[x.id]||[];
+  return `<details class="mais full" ${rs.length?'open':''}><summary>Dividir entre fazendas</summary><div class="campos">
+    ${fs.map(f=>`<label>${esc(f.nome)} (%)<input name="rat:${f.id}" type="number" min="0" max="100" step="0.01" inputmode="decimal" value="${rs.find(r=>r.fazenda===f.id)?.percentual??''}"></label>`).join('')}
+    <p class="note full">O que não for dividido (até 100%) fica na fazenda escolhida acima, ou em Geral. Os relatórios por fazenda usam esta divisão.</p></div></details>`;
 }
 /* ---------- mover em lote para outro CPF/CNPJ ou outra fazenda ---------- */
 const podeMover = () => variasEnt() || variasFaz();
@@ -300,12 +309,13 @@ caixa(){
       ${emitHtml('ent', x.entidade)}
       ${real?contaSelect('conta', x.conta):''}
       ${fazSelect('faz', x.fazenda)}
+      ${rateioCampos(x)}
       ${docCampos(x, x.tipo)}
       <p class="err full" hidden></p>
       <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`;
     return `
     <div class="row"><span class="t">${esc(x.desc||x.cat)}</span><span class="a ${x.tipo==='d'?'down':'up'}">${x.tipo==='d'?'−':'+'} ${brl(x.valor)}</span>
-    <span class="s">${fdata(x.data)} · ${esc(x.cat)}${quemOnde(x)?' · '+quemOnde(x):''}${!real&&!x.venda?` · <button type="button" class="lnk" data-realizar="${x.id}">marcar como pago</button>`:''}${x.venda?' · ver em Vendas':` · ${acoes(tab, x.id, {editar:true})}`}</span></div>`; }).join('') || `<p class="note">${real?'Nenhum pagamento ou recebimento ainda.':'Nada a pagar ou a receber. Agende salários, insumos e vendas previstas para ver o fluxo.'}</p>`}
+    <span class="s">${fdata(x.data)} · ${esc(x.cat)}${quemOnde(x)?' · '+quemOnde(x):''}${S.rateios?.[x.id]?.length?` · dividido entre ${plural(S.rateios[x.id].length,'fazenda','fazendas')}`:''}${!real&&!x.venda?` · <button type="button" class="lnk" data-realizar="${x.id}">marcar como pago</button>`:''}${x.venda?' · ver em Vendas':` · ${acoes(tab, x.id, {editar:true})}`}</span></div>`; }).join('') || `<p class="note">${real?'Nenhum pagamento ou recebimento ainda.':'Nada a pagar ou a receber. Agende salários, insumos e vendas previstas para ver o fluxo.'}</p>`}
   </section>`;
 },
 
@@ -656,11 +666,12 @@ cadastros(){
 },
 
 resultado(){
+  if (E.modoRes==='rel') return segRes() + relatorios();
   const T=tot(E.safraSel);
   const porCat={}; S.caixa.filter(x=>x.tipo==='d'&&safraIni(x.data)===E.safraSel).forEach(x=>porCat[x.cat]=(porCat[x.cat]||0)+x.valor);
   const ents=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const margemKg=T.precoLivre-T.custoKg, pct=T.receita?T.lucro/T.receita*100:0;
-  return `
+  return segRes() + `
   <section class="sec">
     <div class="sec-h"><h2>Custo e margem</h2>${chipsSafra()}</div>
     <div class="kpis">
@@ -679,6 +690,73 @@ resultado(){
   </section>`;
 }
 };
+
+/* ---------- relatórios (aba Resultado) ---------- */
+const segRes = () => `<div class="seg">${[['margem','Custo e margem'],['rel','Relatórios']].map(([k,n])=>`<button type="button" data-modores="${k}" aria-pressed="${E.modoRes===k}">${n}</button>`).join('')}</div>`;
+const anoAtual = () => +hoje().slice(0,4);
+/* período escolhido: as duas últimas safras, os dois últimos anos ou de/até */
+function periodoAtual(){
+  const P=E.periodo, ano = P.ano ?? (P.tipo==='ano' ? anoAtual() : CUR);
+  return {...periodo(P.tipo, ano, P), base:P.base};
+}
+function relatorios(){
+  const u=usuario(), d=dadosRelatorio(), P=E.periodo, p=periodoAtual(), fz=u.fazendaSel;
+  const ms=movimentos(d, p).filter(m=>!fz || m.fazenda===fz), t=resumir(ms), r=resina(d, p, fz);
+  const fazendas = fz ? u.fazendas.filter(f=>f.id===fz) : u.fazendas, ents = u.entidades.filter(e=>!u.entidadeSel || e.id===u.entidadeSel);
+  const pe=porEntidade(ms, ents), pf=porFazenda(ms, fazendas), pm=producaoMensal(d, p, fazendas), mx=matrizVendas(d, p);
+  const entsVenda = ents.filter(e=>Object.values(mx).some(l=>l[e.id])), fazVenda = fazendas.filter(f=>mx[f.id]);
+  const opcoes = [...[CUR-1, CUR].map(y=>['safra', y, `Safra ${safraLbl(y)}`]), ...[anoAtual()-1, anoAtual()].map(y=>['ano', y, `Ano ${y}`])];
+  const marc = (tipo, y) => P.tipo===tipo && (P.ano ?? (tipo==='ano'?anoAtual():CUR))===y;
+  /* listas em vez de tabelas: nada rola para o lado no celular */
+  const linhaRes = (nome, x, extra='') => `<div class="row"><span class="t">${nome}</span><span class="a ${x.res>=0?'up':'down'}">${brl(x.res)}</span><span class="s">Receitas ${brl(x.receita)} · Despesas ${brl(x.desp)}${extra}</span></div>`;
+  const totalRes = x => `<div class="rec"><span><b>Total</b> · receitas ${brl(x.receita)} · despesas ${brl(x.desp)}</span><b class="${x.res>=0?'up':'down'}">${brl(x.res)}</b></div>`;
+  const cores = i => CORES[i % CORES.length];
+  return `
+  <section class="sec">
+    <h2>Relatórios</h2>
+    <div class="chips">${opcoes.map(([tp,y,n])=>`<button type="button" data-per="${tp}:${y}" aria-pressed="${marc(tp,y)}">${n}</button>`).join('')}<button type="button" data-per="livre" aria-pressed="${P.tipo==='livre'}">Outro período</button></div>
+    ${P.tipo==='livre'?`<form id="fPeriodo"><label>De<input name="de" type="date" value="${P.de||p.de}" required></label><label>Até<input name="ate" type="date" value="${P.ate||p.ate}" required></label><button class="btn sm full ghost">Ver período</button></form>`:''}
+    <div class="seg">${[['competencia','Competência'],['caixa','Caixa']].map(([k,n])=>`<button type="button" data-base="${k}" aria-pressed="${P.base===k}">${n}</button>`).join('')}</div>
+    <p class="note">${fdata(p.de)}/${p.de.slice(0,4)} a ${fdata(p.ate)}/${p.ate.slice(0,4)}. ${P.base==='caixa'?'<b>Caixa</b>: vendas pelo que foi recebido, na data do recebimento; despesas pela data do pagamento.':'<b>Competência</b>: vendas pela data da venda; despesas pelo mês a que se referem.'} Receitas já líquidas de Funrural/folha.</p>
+    <div class="kpis">
+      <div class="card kpi"><div class="l">Receitas</div><div class="v up">${brl(t.receita)}</div></div>
+      <div class="card kpi"><div class="l">Despesas</div><div class="v down">${brl(t.desp)}</div></div>
+      <div class="card kpi"><div class="l">Resultado</div><div class="v ${t.res>=0?'up':'down'}">${brl(t.res)}</div></div>
+      <div class="card kpi"><div class="l">Resina coletada</div><div class="v">${num(r.coletado)} <small>kg</small></div></div>
+      <div class="card kpi"><div class="l">Vendida</div><div class="v">${num(r.vendido)} <small>kg</small></div></div>
+      <div class="card kpi"><div class="l">Perdida</div><div class="v ${r.perdido?'down':''}">${num(r.perdido)} <small>kg</small></div></div>
+    </div>
+  </section>
+  <section class="card sec">
+    <h3>Por CPF/CNPJ</h3>
+    <div class="list">${pe.map(x=>linhaRes(x.id?chipEnt(entPor(x.id)):'<i>Sem CPF/CNPJ</i>', x, ` · <b>vendas ${brl(x.vendas)}</b>`)).join('') || '<p class="note">Sem movimento no período.</p>'}</div>
+    ${pe.length>1?totalRes(t):''}
+    <p class="note">"Vendas" é o que cada CPF/CNPJ faturou de resina no período: serve para acompanhar o teto de faturamento de cada um.</p>
+  </section>
+  <section class="card sec">
+    <h3>Por fazenda</h3>
+    <div class="list">${pf.map(x=>linhaRes(x.id?esc(fazPor(x.id)?.nome||''):'<i>Geral (sem fazenda)</i>', x)).join('') || '<p class="note">Sem movimento no período.</p>'}</div>
+    ${pf.length>1?totalRes(t):''}
+    <p class="note">Despesas divididas entre fazendas (rateio) entram na parte de cada uma. O que não tem fazenda aparece como Geral.</p>
+  </section>
+  ${mod('producao')||mod('floresta')?`<section class="card sec">
+    <h3>Produção por mês</h3>
+    ${chart({title:'Produção por fazenda e mês', labels:pm.meses.map(m=>MES_SAFRA[mIdx(m+'-01')]), bars:fazendas.map((f,i)=>({vals:pm.linhas[f.id], color:cores(i)})), h:180})}
+    ${fazendas.length>1?legend(fazendas.map((f,i)=>({c:cores(i), t:esc(f.nome)}))):''}
+    <div class="list">${fazendas.map(f=>{ const rf=resina(d, p, f.id), arvs=sum(d.talhoes.filter(x=>x.fazenda===f.id), painT);
+      return `<div class="row"><span class="t">${esc(f.nome)}</span><span class="a">${num(rf.coletado)} kg</span><span class="s">Perdido ${num(rf.perdido)} kg · ${num(arvs?rf.coletado/arvs:0,2)} kg/árvore</span></div>`; }).join('')}</div>
+    ${fazendas.length>1?`<div class="rec"><span><b>Total coletado</b> · perdido ${num(r.perdido)} kg</span><b>${num(r.coletado)} kg</b></div>`:''}
+    <p class="note">A produção é da fazenda: não depende de quem emitiu a nota.</p>
+  </section>`:''}
+  ${mod('vendas')?`<section class="card sec">
+    <h3>Venda cruzada: fazenda × quem emitiu</h3>
+    ${fazVenda.length?fazVenda.map(f=>{ const tf=somaMatriz(mx,'fazenda',f.id); return `<div class="box"><div class="rec"><span><b>${esc(f.nome)}</b></span><b>${num(tf.kg)} kg · ${brl(tf.valor)}</b></div>
+      ${entsVenda.filter(e=>mx[f.id]?.[e.id]).map(e=>{ const c=mx[f.id][e.id]; return `<div class="rec"><span>${chipEnt(e)}</span><span>${num(c.kg)} kg · ${brl(c.valor)}</span></div>`; }).join('')}</div>`; }).join('')
+    + (entsVenda.length>1?`<div class="box"><div class="rec"><span><b>Total por quem emitiu</b></span><b>${num(r.vendido)} kg</b></div>${entsVenda.map(e=>{ const c=somaMatriz(mx,'entidade',e.id); return `<div class="rec"><span>${chipEnt(e)}</span><span>${num(c.kg)} kg · ${brl(c.valor)}</span></div>`; }).join('')}</div>`:'')
+    + `<p class="note">De onde saiu a resina e por qual CPF/CNPJ foi vendida, pela data da venda (valores líquidos).</p>`
+    :'<p class="note">Nenhuma venda no período.</p>'}
+  </section>`:''}`;
+}
 
 /* ---------- conta: helpers ---------- */
 const modsHtml = sel => MODS.map(m=>`<label class="ram"><input type="checkbox" name="mod" value="${m.k}" ${sel?.[m.k]?'checked':''}>

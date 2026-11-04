@@ -21,7 +21,7 @@ const NAV_MOD = {caixa:'caixa', vendas:'vendas', resultado:'resultado'};
 /* telas da aba Fazendas: usam os dados da fazenda aberta (E.fazSel) */
 const TELAS_FAZ = ['floresta','producao','perdas','fazenda'];
 const vazio = () => ({demo:false, regime:'funrural', saldoInicial:0, ideal:14, entidade:null, fazenda:null, fazendas:[], talhoes:[], estrias:[], producao:[], perdas:[],
-  vendas:[], caixa:[], comp:[], todas:{vendas:[], caixa:[], comp:[]}, compradores:{}});
+  vendas:[], caixa:[], comp:[], todas:{vendas:[], caixa:[], comp:[]}, compradores:{}, rateios:{}});
 
 usarDados(vazio());
 
@@ -30,6 +30,7 @@ const CUR = safraIni(hoje());
 const E = {atual:'login', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null,
   lMode:'entrar', lAviso:'', lErro:'', senhaTrocada:null, admin:false, fazSel:null, fazEdit:null, entEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
   sel:null,   // seleção para mover em lote: {tab, ids:Set}
+  modoRes:'margem', periodo:{tipo:'safra', ano:null, de:'', ate:'', base:'competencia'},   // relatórios: safra/ano/livre e base
   render:()=>{}, mostrarSync:()=>{}};
 
 /* ---------- sessão: usuário logado e o cache local dele ----------
@@ -54,6 +55,13 @@ function dadosFazenda(fid){
   if (!SES.L || !fid) return null;
   if (memoFaz.v!==versao) memoFaz = {v:versao, d:{}};
   return memoFaz.d[fid] ??= montarDados(SES.L, {fazenda:fid});
+}
+/* dados dos relatórios: com o filtro de CPF/CNPJ, mas sem o de fazenda (o rateio leva parte de um lançamento a outra fazenda;
+   o relatório aplica a fazenda depois de dividir) */
+function dadosRelatorio(){
+  if (!SES.L) return null;
+  if (memoFaz.v!==versao) memoFaz = {v:versao, d:{}};
+  return memoFaz.d['rel:'+(usuario().entidadeSel||'')] ??= montarDados(SES.L, {entidade:usuario().entidadeSel});
 }
 const fazAtual = () => usuario()?.fazendas.find(f=>f.id===E.fazSel) || null;
 const mod = k => !!usuario()?.modulos?.[k];
@@ -263,6 +271,6 @@ function prepararExemplo(){
   for (const f of u.fazendas) if (f.demo && (!f.demo_gerado_em || diff(f.demo_gerado_em, hoje())>7)) regerarExemplo(f);
 }
 
-export { MODS, MOD_PADRAO, NAV_MOD, TELAS_FAZ, vazio, CUR, E, SES, usuario, dadosFazenda, fazAtual, dadosTela, mod, recarregar, abrirSessao, fecharSessao, suspender,
+export { MODS, MOD_PADRAO, NAV_MOD, TELAS_FAZ, vazio, CUR, E, SES, usuario, dadosFazenda, dadosRelatorio, fazAtual, dadosTela, mod, recarregar, abrirSessao, fecharSessao, suspender,
   abrirFazenda, definirFiltro, definirEntidade, nomeEnt, entPadrao, emitentePadrao, inscricaoPara, contaPara, completarCadastro,
   salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, EX_ENT, EX_FAZ, linhasExemplo, regerarExemplo, prepararExemplo };
