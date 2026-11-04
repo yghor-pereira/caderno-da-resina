@@ -30,6 +30,7 @@ const CUR = safraIni(hoje());
 const E = {atual:'login', safraSel:CUR, tipoLanc:'d', modoCaixa:'real', talSel:null, flMode:'ramais', ramSel:null, opTipo:'estria', apTal:null, apSel:null,
   lMode:'entrar', lAviso:'', lErro:'', senhaTrocada:null, admin:false, fazSel:null, fazEdit:null, entEdit:null, limparPend:null, aberta:null, confirmar:null, editar:null, sairPend:false,
   sel:null,   // seleção para mover em lote: {tab, ids:Set}
+  intencao:null, inicioCompleto:false,   // modo campo: atalho escolhido antes da fazenda; ver o Início completo
   modoRes:'margem', periodo:{tipo:'safra', ano:null, de:'', ate:'', base:'competencia'},   // relatórios: safra/ano/livre e base
   render:()=>{}, mostrarSync:()=>{}};
 
@@ -77,6 +78,20 @@ function definirFiltro(campo, id){
   recarregar(); E.render();
 }
 const definirEntidade = id => definirFiltro('entidade', id);
+/* ---------- tela: tamanho da letra e modo campo (por usuário, neste aparelho) ---------- */
+const tela = () => ({letra: SES.L?.meta.letra || 'n', campo: !!SES.L?.meta.campo});
+function aplicarTela(){
+  const r = globalThis.document?.documentElement; if (!r) return;
+  const t = tela();
+  if (t.letra==='n') delete r.dataset.letra; else r.dataset.letra = t.letra;
+  if (t.campo) r.dataset.campo = '1'; else delete r.dataset.campo;
+}
+function definirTela(campo, valor){
+  if (!SES.L) return;
+  definirMeta(SES.L, {[campo]:valor});
+  track('feature_used', campo==='letra' ? {funcao:'letra_alterada', tamanho:valor} : {funcao:'modo_campo', ligado:!!valor});
+  aplicarTela(); E.render();
+}
 const nomeEnt = e => e ? (e.apelido || e.nome) : 'Sem CPF/CNPJ';
 const entPadrao = () => { const es = usuario()?.entidades||[]; return es.find(e=>e.padrao) || es[0] || null; };
 /* emitente sugerido: o CPF/CNPJ do filtro do topo; senão o padrão */
@@ -94,6 +109,7 @@ function abrirSessao(userId, meta={}){
   definirUltimo(userId);
   if (meta.email) definirMeta(SES.L, meta);
   abrirMetricas(userId);
+  aplicarTela();
   recarregar();
 }
 async function fecharSessao(){
@@ -101,6 +117,7 @@ async function fecharSessao(){
   SES.L = null; SES.nuvem = null; E.fazSel = null;   // primeiro: uma sincronização em andamento para de gravar
   fecharMetricas();
   definirUltimo(null);
+  aplicarTela();
   recarregar();
   await sairNuvem();
 }
@@ -272,5 +289,5 @@ function prepararExemplo(){
 }
 
 export { MODS, MOD_PADRAO, NAV_MOD, TELAS_FAZ, vazio, CUR, E, SES, usuario, dadosFazenda, dadosRelatorio, fazAtual, dadosTela, mod, recarregar, abrirSessao, fecharSessao, suspender,
-  abrirFazenda, definirFiltro, definirEntidade, nomeEnt, entPadrao, emitentePadrao, inscricaoPara, contaPara, completarCadastro,
+  abrirFazenda, definirFiltro, definirEntidade, tela, aplicarTela, definirTela, nomeEnt, entPadrao, emitentePadrao, inscricaoPara, contaPara, completarCadastro,
   salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, EX_ENT, EX_FAZ, linhasExemplo, regerarExemplo, prepararExemplo };

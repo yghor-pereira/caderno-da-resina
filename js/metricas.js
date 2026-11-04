@@ -18,7 +18,7 @@ const CATALOGO = {
   tabelas: ['perfis', 'entidades_fiscais', 'inscricoes_estaduais', 'contas_bancarias', 'fazendas', 'talhoes', 'ramais', 'contagens', 'estrias', 'coletas', 'perdas',
     'vendas', 'recebimentos', 'lancamentos', 'compromissos', 'compradores', 'rateios'],
   funcoes: ['dados_exemplo', 'regerar_exemplo', 'limpar_fazenda', 'compromisso_pago', 'regime_alterado', 'intervalo_alterado',
-    'funcao_ligada', 'funcao_desligada', 'safra_trocada', 'nfe_emitida', 'cnpj_consultado', 'sincronizar_manual', 'entidade_filtrada', 'fazenda_filtrada', 'mover_lote', 'periodo_alterado']
+    'funcao_ligada', 'funcao_desligada', 'safra_trocada', 'nfe_emitida', 'cnpj_consultado', 'sincronizar_manual', 'entidade_filtrada', 'fazenda_filtrada', 'mover_lote', 'periodo_alterado', 'letra_alterada', 'modo_campo', 'atalho_campo']
 };
 
 let M = null;          // {userId, arm, fila, sessoes, atual, tela, ultimaAtividade, ultimoTique}

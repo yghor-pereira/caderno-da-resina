@@ -3,6 +3,7 @@ import { CAT_IR, catIrDe, TIPOS_DOC, REGIMES_TRIB, CORES_ENT, MERCADO, DICAS, SA
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
 import { movimentos, resumir, porEntidade, porFazenda, producaoMensal, matrizVendas, somaMatriz, resina, periodo } from './relatorios.js';
+import { tela as telaPref } from './estado.js';
 import { MODS, MOD_PADRAO, usuario, dadosFazenda, dadosRelatorio, fazAtual, mod, CUR, E, EX, SES, nPendentes, listaErros, nomeEnt, emitentePadrao, inscricaoPara, contaPara } from './estado.js';
 import { mascaraDoc } from './doc.js';
 
@@ -137,7 +138,8 @@ fazendas(){
   const u=usuario(), fs=u.fazendas;
   return `
   <section class="sec">
-    <h2>Fazendas</h2>
+    <h2>${E.intencao?`Em qual fazenda? <span class="note" style="font-weight:400">· ${{estria:'apontar estria',coleta:'apontar coleta',perda:'anotar perda'}[E.intencao]}</span>`:'Fazendas'}</h2>
+    ${E.intencao?'<button type="button" class="lnk" data-intencao="" style="align-self:flex-start">Cancelar</button>':''}
     ${fs.length?`<div class="fzs">${fs.map(f=>{ const d=dadosFazenda(f.id); return `<button type="button" class="card fz" data-abrfaz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">${esc(f.municipio)}/${esc(f.uf)}${f.area_ha!=null?' · '+num(f.area_ha,1)+' ha':''}</span><span class="note">${plural(d.talhoes.length,'talhão','talhões')} · ${plural(sum(d.talhoes,painT),'árvore','árvores')} · ${num(sum(d.producao.filter(inSafra(CUR)),x=>x.kg))} kg na safra</span></button>`; }).join('')}</div>`
     :'<p class="note">Cadastre sua primeira fazenda. Ela guarda a floresta, a produção e as perdas. CPFs, CNPJs, inscrições e contas ficam em Conta, nos cadastros financeiros.</p>'}
   </section>
@@ -159,6 +161,14 @@ conta(){
     <h3>CPFs, CNPJs e contas</h3>
     <p class="note">${plural(u.entidades.length,'CPF/CNPJ','CPFs/CNPJs')} · ${plural(nIe,'inscrição estadual','inscrições estaduais')} · ${plural(nContas,'conta bancária','contas bancárias')}. Quem emite as notas e em nome de quem ficam as contas a pagar e a receber.</p>
     <button type="button" class="btn sm ghost" data-ir="cadastros" style="align-self:flex-start">CPFs, CNPJs e contas</button>
+  </section>
+  <section class="card sec">
+    <h3>Tela e uso no campo</h3>
+    <p class="note">Vale para este aparelho.</p>
+    <span class="note"><b>Tamanho da letra</b></span>
+    <div class="seg">${[['n','Normal'],['g','Grande'],['gg','Muito grande']].map(([k,n])=>`<button type="button" data-letra="${k}" aria-pressed="${telaPref().letra===k}">${n}</button>`).join('')}</div>
+    <span class="note"><b>Modo campo</b>: botões maiores e um Início simples, só com o que se registra no campo (estria, coleta, perda, despesa e venda).</span>
+    <div class="seg"><button type="button" data-campoon="0" aria-pressed="${!telaPref().campo}">Desligado</button><button type="button" data-campoon="1" aria-pressed="${telaPref().campo}">Ligado</button></div>
   </section>
   <section class="card sec">
     <h3>Funções habilitadas</h3>
@@ -200,7 +210,9 @@ inicio(){
     return {f, kg, arvs, receita:vend+rec, desp, res:vend+rec-desp};
   };
   const rows = comp.map(linhaComp).filter(r=>r.f || r.receita || r.desp);
+  if (telaPref().campo && !E.inicioCompleto) return inicioCampo(alertas);
   return `
+  ${telaPref().campo?'<button type="button" class="lnk" data-iniciocompleto="0" style="align-self:flex-start">← Voltar aos atalhos do campo</button>':''}
   <section class="sec">
     <div class="sec-h"><h2>Mercado hoje</h2><span class="tag">${MERCADO.atualizado}</span></div>
     <div class="grid3">
@@ -224,11 +236,10 @@ inicio(){
   </section>
   ${rows.length?`<section class="card sec">
     <h3>Por fazenda · safra ${safraLbl(CUR)}</h3>
-    <div class="tbl"><table><thead><tr><th>Fazenda</th><th>kg</th><th>Receitas</th><th>Despesas</th><th>Resultado</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><td>${r.f?`<button type="button" class="lnk" data-abrfaz="${r.f.id}">${esc(r.f.nome)}</button>`:'<i>Geral (sem fazenda)</i>'}</td><td>${r.f?num(r.kg):'—'}</td>
-      <td>${brl(r.receita)}</td><td>${brl(r.desp)}</td><td class="${r.res>=0?'up':'down'}">${brl(r.res)}</td></tr>`).join('')}
-    <tr><td><b>Total</b></td><td><b>${num(sum(rows,r=>r.kg))}</b></td><td><b>${brl(sum(rows,r=>r.receita))}</b></td><td><b>${brl(sum(rows,r=>r.desp))}</b></td><td><b>${brl(sum(rows,r=>r.res))}</b></td></tr>
-    </tbody></table></div>
+    <div class="list">${rows.map(r=>`<div class="row"><span class="t">${r.f?`<button type="button" class="lnk" data-abrfaz="${r.f.id}">${esc(r.f.nome)}</button>`:'<i>Geral (sem fazenda)</i>'}</span>
+      <span class="a ${r.res>=0?'up':'down'}">${brl(r.res)}</span>
+      <span class="s">${r.f?`${num(r.kg)} kg · ${num(r.arvs?r.kg/r.arvs:0,2)} kg/árvore · `:''}Receitas ${brl(r.receita)} · Despesas ${brl(r.desp)}</span></div>`).join('')}</div>
+    <div class="rec"><span><b>Total</b> · ${num(sum(rows,r=>r.kg))} kg · receitas ${brl(sum(rows,r=>r.receita))} · despesas ${brl(sum(rows,r=>r.desp))}</span><b class="${sum(rows,r=>r.res)>=0?'up':'down'}">${brl(sum(rows,r=>r.res))}</b></div>
     <p class="note">Receitas já líquidas da retenção. ${u.entidadeSel?`Só o financeiro de ${chipEnt(entPor(u.entidadeSel))}.`:'Todos os CPFs/CNPJs.'} Despesas sem fazenda (contador, impostos, administração) aparecem como Geral.</p>
   </section>`:''}
   <section class="sec">
@@ -396,7 +407,7 @@ floresta(){
     ${chipsTal('aptal', E.apTal)}
     ${ta?`<form id="fAp">
       <div class="full sec" style="gap:6px">
-        <div class="sec-h"><span class="note">${E.opTipo==='estria'?'Pré-selecionados os ramais com estria vencendo.':'Marque os ramais coletados.'}</span>
+        <div class="sec-h"><span class="note">${E.opTipo!=='estria' ? 'Marque os ramais coletados.' : E.apSel.size ? 'Já vêm marcados os ramais com estria vencendo.' : avisoSemVencer(ta)}</span>
           <span><button type="button" class="lnk" data-apall="1">Todos</button> · <button type="button" class="lnk" data-apall="0">Nenhum</button></span></div>
         <div class="rams">${rs.map(s=>`<label class="ram"><input type="checkbox" name="ram" value="${s.r.id}" ${E.apSel.has(s.r.id)?'checked':''}>
           <span><b>${esc(s.r.cod)}</b> · ${num(s.arv)} árv.<small>${s.ult?`estria há ${s.desde}d`:'sem estria'}</small></span></label>`).join('')}</div>
@@ -690,6 +701,29 @@ resultado(){
   </section>`;
 }
 };
+
+/* estria: nenhum ramal vencendo no talhão escolhido; aponta os talhões que têm ramal vencendo */
+function avisoSemVencer(t){
+  const outros = S.talhoes.filter(x=>x.id!==t.id && x.ramais.some(r=>{ const st=ramStats(x,r); return st.desde==null || st.desde>=S.ideal-2; }));
+  return `<b>Nenhum ramal com estria vencendo no ${esc(t.nome)}.</b> Marque à mão os que vai estriar${outros.length?`, ou vá para ${outros.map(x=>`<button type="button" class="lnk" data-aptal="${x.id}">${esc(x.nome)}</button>`).join(', ')}, que tem ramal vencendo`:''}.`;
+}
+/* ---------- modo campo: Início com atalhos grandes ---------- */
+const ICONES = {
+  estria:'<path d="M5 20 19 6"/><path d="M14 6h5v5"/>', coleta:'<path d="M12 3c3 4 5 7 5 10a5 5 0 0 1-10 0c0-3 2-6 5-10z"/>',
+  perda:'<path d="M12 3c3 4 5 7 5 10a5 5 0 0 1-10 0c0-3 2-6 5-10z"/><path d="M5 5l14 14"/>', despesa:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M8 15h3"/>',
+  venda:'<path d="M4 7h16l-1.5 11h-13z"/><path d="M9 7a3 3 0 0 1 6 0"/>'};
+function inicioCampo(alertas){
+  const acoes = [mod('floresta')&&['estria','Apontar estria'], mod('floresta')&&['coleta','Apontar coleta'], mod('floresta')&&['perda','Anotar perda'],
+    mod('caixa')&&['despesa','Lançar despesa'], mod('vendas')&&['venda','Registrar venda']].filter(Boolean);
+  return `
+  <section class="sec">
+    <h2>O que você vai registrar?</h2>
+    <div class="campo-acoes">${acoes.map(([k,n])=>`<button type="button" data-campo="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[k]}</svg>${n}</button>`).join('')}</div>
+  </section>
+  ${alertas.length?`<section class="card sec"><h3>Atenção nos próximos dias</h3><div class="alert">${alertas.join('')}</div></section>`:''}
+  <p class="note">Sem sinal, tudo fica guardado no aparelho e é enviado quando a internet voltar.</p>
+  <button type="button" class="btn ghost" data-iniciocompleto="1">Ver o Início completo</button>`;
+}
 
 /* ---------- relatórios (aba Resultado) ---------- */
 const segRes = () => `<div class="seg">${[['margem','Custo e margem'],['rel','Relatórios']].map(([k,n])=>`<button type="button" data-modores="${k}" aria-pressed="${E.modoRes===k}">${n}</button>`).join('')}</div>`;

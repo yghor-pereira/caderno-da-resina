@@ -62,6 +62,9 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `entidade_filtrada` | escolheu um CPF/CNPJ (ou "Todos", com `todos: true`) no filtro do topo |
 | `fazenda_filtrada` | escolheu uma fazenda (ou todas, com `todos: true`) no filtro do topo |
 | `mover_lote` | moveu registros em lote para outro CPF/CNPJ ou outra fazenda (`tabela`, `qtd`) |
+| `letra_alterada` | mudou o tamanho da letra (`tamanho`: n, g, gg) |
+| `modo_campo` | ligou ou desligou o modo campo (`ligado`) |
+| `atalho_campo` | tocou num atalho do Início do modo campo (`acao`: estria, coleta, perda, despesa, venda) |
 | `periodo_alterado` | trocou o período (`tipo`: safra, ano, livre) ou a base (`base`: competencia, caixa) dos relatórios |
 
 Os dados de exemplo e a limpeza de fazenda **não** geram `record_*` (seriam centenas de registros que o produtor não digitou); geram só o `feature_used` correspondente.

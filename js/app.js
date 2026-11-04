@@ -3,7 +3,7 @@ import { saldoV, recV, abaixoDoRecebido, REG, liqV, arv, talByNome, talById, ram
 import { exemplo } from './exemplo.js';
 import { MODS, NAV_MOD, TELAS_FAZ, vazio, CUR, E, SES, usuario, fazAtual, dadosTela, mod, abrirSessao, fecharSessao, suspender, abrirFazenda, definirFiltro, nomeEnt,
   entPadrao, emitentePadrao, inscricaoPara, contaPara, completarCadastro, salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros,
-  EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
+  EX, linhasExemplo, regerarExemplo, prepararExemplo, aplicarTela, definirTela, tela } from './estado.js';
 import { ultimoUsuario, apagarCacheDoEmail } from './local.js';
 import { track, atividade, tique } from './metricas.js';
 import { linha, linhasDoTalhao } from './mapa.js';
@@ -13,11 +13,27 @@ import { soDig, mascaraDoc, docValido } from './doc.js';
 import { ieValida } from './ie.js';
 import { V, chipEnt } from './telas.js';
 
-/* abre uma fazenda na aba Fazendas (floresta, ou produção se a floresta estiver desligada) */
+/* abre uma fazenda na aba Fazendas (floresta, ou produção se a floresta estiver desligada).
+   Vindo de um atalho do modo campo, vai direto para o que o produtor escolheu (apontar estria ou coleta, anotar perda). */
 function irFazenda(fid){
   abrirFazenda(fid);
   E.talSel=null; E.ramSel=null; E.apTal=null; E.apSel=null; E.safraSel=CUR; E.editar=null; E.confirmar=null; E.limparPend=null;
+  const intencao=E.intencao; E.intencao=null;
+  if (intencao==='estria' || intencao==='coleta') { E.flMode='apontar'; E.opTipo=intencao; return ir('floresta'); }
+  if (intencao==='perda') return ir('perdas');
   ir(mod('floresta') ? 'floresta' : mod('producao') ? 'producao' : 'fazenda');
+}
+/* coloca o cursor no primeiro campo do formulário (depois de desenhar a tela) */
+const focar = sel => setTimeout(()=>{ const el=document.querySelector(sel); if(el){ el.scrollIntoView({block:'center'}); el.focus(); } }, 50);
+/* atalhos do modo campo: estria, coleta e perda pedem a fazenda (se houver mais de uma); despesa e venda vão direto ao formulário */
+function acaoCampo(a){
+  track('feature_used', {funcao:'atalho_campo', acao:a});
+  if (a==='despesa'){ E.modoCaixa='real'; E.tipoLanc='d'; ir('caixa'); return focar('#fCaixa [name=valor]'); }
+  if (a==='venda'){ ir('vendas'); return focar('#vComp'); }
+  E.intencao=a;
+  const fs=usuario().fazendas;
+  if (fs.length===1) return irFazenda(fs[0].id);
+  E.fazSel=null; ir('fazendas');
 }
 /* depois de uma sincronização que deu certo: completa o cadastro (CPF padrão, conta) e prepara a conta de exemplo.
    Se o servidor ainda não tem as tabelas novas (migração 0006 não aplicada), não mexe em nada. */
@@ -80,6 +96,7 @@ const TELAS_FIN = ['inicio','caixa','vendas','resultado'];
 function render(op){
   if (op?.seguro && emUso()) { renderPendente=true; return; }
   renderPendente=false;
+  aplicarTela();
   const u=usuario();
   if (E.atual==='carregando') { app.innerHTML='<p class="note">Abrindo o caderno…</p>'; hdr.innerHTML='<h1>Caderno da Resina</h1>'; nav.hidden=true; return; }
   if (!u) E.atual='login';
@@ -96,7 +113,7 @@ function render(op){
     : `<div class="hrow"><div><h1>Caderno da Resina</h1><p>${esc(u.nome)}</p>
         <button type="button" id="sync" class="sync"></button></div>
         <div class="hbtn"><button type="button" class="btn sm ghost" data-conta="1" ${E.atual==='conta'||E.atual==='cadastros'?'aria-current="page"':''}>Conta</button></div></div>
-        ${TELAS_FIN.includes(E.atual) ? filtros(u) : ''}`;
+        ${TELAS_FIN.includes(E.atual) && !(E.atual==='inicio' && tela().campo && !E.inicioCompleto) ? filtros(u) : ''}`;
   nav.hidden = !u || E.atual==='senha';
   const aba = ABA[E.atual]!==undefined ? ABA[E.atual] : E.atual;
   nav.querySelectorAll('button').forEach(b=>{ const v=b.dataset.v;
@@ -119,7 +136,7 @@ function filtros(u){
 }
 function ir(v){ E.atual=v; E.editar=null; E.confirmar=null; E.sel=null; render(); window.scrollTo(0,0); }
 app.addEventListener('focusout',()=>setTimeout(()=>{ if(renderPendente && !emUso()) render(); },0));
-nav.addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) ir(b.dataset.v); });
+nav.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; E.intencao=null; if(b.dataset.v==='inicio') E.inicioCompleto=false; if(b.dataset.v==='fazendas') E.fazSel=null; ir(b.dataset.v); });
 hdr.addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b) return;
   if(b.dataset.ent!==undefined){ definirFiltro('entidade', b.dataset.ent||null); }
   if(b.dataset.conta){ E.entEdit=null; ir('conta'); }
@@ -144,7 +161,12 @@ app.addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
   const d=b.dataset;
   if(d.abrfaz){ irFazenda(d.abrfaz); }
-  else if(d.ir){ if(d.ir==='fazendas') E.fazSel=null; ir(d.ir); }
+  else if(d.campo){ acaoCampo(d.campo); }
+  else if(d.letra){ definirTela('letra', d.letra); }
+  else if(d.campoon){ definirTela('campo', d.campoon==='1'); }
+  else if(d.iniciocompleto){ E.inicioCompleto=d.iniciocompleto==='1'; render(); window.scrollTo(0,0); }
+  else if(d.intencao!==undefined){ E.intencao=null; render(); }
+  else if(d.ir){ if(d.ir==='fazendas') E.fazSel=null; if(d.ir!=='fazendas') E.intencao=null; ir(d.ir); }
   else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; E.lErro=''; render(); }
   else if(d.demo){ b.disabled=true; b.textContent='Entrando…';
     try { await aposLogin(await entrar(EX.email, EX.senha), 'exemplo'); }

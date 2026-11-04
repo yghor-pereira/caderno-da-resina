@@ -119,3 +119,32 @@ test('telas: relatórios por CPF/CNPJ, por fazenda, produção por mês e venda 
   assert.match(V.resultado(), /01\/03\/2026 a 31\/05\/2026/);
   est.E.modoRes = 'margem';
 });
+
+test('tela: tamanho da letra e modo campo ficam guardados; o Início do modo campo mostra só os atalhos', () => {
+  est.definirTela('letra', 'gg'); est.definirTela('campo', true);
+  assert.deepEqual(est.tela(), { letra: 'gg', campo: true });
+  assert.equal(est.SES.L.meta.letra, 'gg');
+  est.E.atual = 'inicio'; est.E.inicioCompleto = false; est.recarregar();
+  const html = V.inicio();
+  for (const t of ['O que você vai registrar?', 'Apontar estria', 'Apontar coleta', 'Anotar perda', 'Lançar despesa', 'Registrar venda', 'Ver o Início completo'])
+    assert.ok(html.includes(t), t);
+  assert.ok(!html.includes('Mercado hoje'), 'o modo campo esconde o mercado');
+  est.E.inicioCompleto = true;
+  assert.match(V.inicio(), /Mercado hoje/);
+  assert.match(V.conta(), /Tela e uso no campo/);
+  est.definirTela('letra', 'n'); est.definirTela('campo', false); est.E.inicioCompleto = false;
+  assert.match(V.inicio(), /Mercado hoje/);
+});
+
+test('estria: sem ramal vencendo no talhão, o app avisa e aponta o talhão que tem ramal vencendo', () => {
+  const sc = est.usuario().fazendas.find(f => f.uf === 'SC');
+  est.abrirFazenda(sc.id); est.E.atual = 'floresta'; est.E.flMode = 'apontar'; est.E.opTipo = 'estria'; est.recarregar();
+  const { S } = est.dadosFazenda(sc.id) && { S: est.dadosFazenda(sc.id) };
+  const emDia = S.talhoes.find(t => t.nome === 'Talhão A');
+  est.E.apTal = emDia.id; est.E.apSel = null;
+  const html = V.floresta();
+  if (/Nenhum ramal com estria vencendo/.test(html)) assert.match(html, /data-aptal="[^"]+">Talhão C<\/button>/, 'aponta o Talhão C, que está atrasado');
+  else assert.match(html, /Já vêm marcados os ramais com estria vencendo/);
+  est.E.apTal = S.talhoes.find(t => t.nome === 'Talhão C').id; est.E.apSel = null;
+  assert.match(V.floresta(), /Já vêm marcados os ramais com estria vencendo/);
+});

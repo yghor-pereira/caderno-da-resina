@@ -15,7 +15,7 @@
   --pine:#7fc29a; --pine-soft:#1f3328; --amber:#e8a542; --amber-soft:#33281a;
   --good:#6cc28a; --bad:#ec8a76; --c3:#b5c58c; --c4:#d69a72; --c5:#8fb4bb; color-scheme:dark}
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.45;
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:1rem;line-height:1.45;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
   padding-block:0 96px}
 .wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
@@ -181,3 +181,28 @@ details.mais small.note{font-size:.72rem}
 .fsel select{padding:7px 10px;width:auto;flex:1;min-width:0}
 optgroup{font-style:normal;font-weight:700}
 .rec b,.row .a{white-space:nowrap}
+/* tamanho da letra escolhido pelo usuário (Conta → Tela e uso no campo): tudo acompanha, porque o resto é em rem/em */
+:root[data-letra="g"]{font-size:118.75%}
+:root[data-letra="gg"]{font-size:137.5%}
+/* área de toque mínima de 24 px nos links de texto (WCAG 2.5.8) e chips mais altos */
+.lnk{display:inline-flex;align-items:center;min-height:24px;padding:2px 2px}
+.chips button{min-height:36px}
+/* modo campo: botões e campos de pelo menos 48 px, caixas de marcar maiores */
+:root[data-campo="1"] .btn,:root[data-campo="1"] .seg button,:root[data-campo="1"] .chips button,:root[data-campo="1"] .opc,
+:root[data-campo="1"] select,:root[data-campo="1"] input:not([type=checkbox]):not([type=radio]){min-height:48px}
+:root[data-campo="1"] .lnk{min-height:44px;padding-inline:6px}
+:root[data-campo="1"] .ram{min-height:56px}
+:root[data-campo="1"] .ram input{width:24px;height:24px}
+:root[data-campo="1"] nav button{min-height:56px}
+:root[data-campo="1"] .sync{min-height:44px}
+/* atalhos grandes do Início no modo campo */
+.campo-acoes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.campo-acoes button{min-height:104px;font:inherit;font-family:var(--display);font-weight:800;font-size:1.05rem;border-radius:16px;border:2px solid var(--pine);
+  background:var(--pine-soft);color:var(--pine);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px;text-align:center;cursor:pointer}
+.campo-acoes button svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.campo-acoes button:last-child:nth-child(odd){grid-column:1/-1}
+/* letra grande sem nada rolar para o lado: a linha de valores quebra inteira, o rodapé não cresce, o gráfico não vaza */
+.rec{flex-wrap:wrap}
+nav button{font-size:min(.68rem,12px)} nav button span{max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+svg.ch{overflow:hidden;max-width:100%}
+:root[data-letra="gg"] .kpis{grid-template-columns:1fr}

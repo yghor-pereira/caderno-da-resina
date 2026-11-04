@@ -59,7 +59,8 @@ const NOMES_FUNCAO = {dados_exemplo:'Começou com dados de exemplo', regerar_exe
   compromisso_pago:'Marcou compromisso como pago', regime_alterado:'Trocou o regime (Funrural/folha)', intervalo_alterado:'Mudou o intervalo ideal',
   funcao_ligada:'Ligou uma função', funcao_desligada:'Desligou uma função', safra_trocada:'Trocou a safra nos gráficos',
   nfe_emitida:'Emitiu NF-e', cnpj_consultado:'Consultou CNPJ', sincronizar_manual:'Sincronizou manualmente',
-  entidade_filtrada:'Filtrou por CPF/CNPJ', fazenda_filtrada:'Filtrou por fazenda', mover_lote:'Moveu registros em lote', periodo_alterado:'Trocou o período ou a base do relatório'};
+  entidade_filtrada:'Filtrou por CPF/CNPJ', fazenda_filtrada:'Filtrou por fazenda', mover_lote:'Moveu registros em lote', periodo_alterado:'Trocou o período ou a base do relatório',
+  letra_alterada:'Mudou o tamanho da letra', modo_campo:'Ligou ou desligou o modo campo', atalho_campo:'Usou um atalho do modo campo'};
 const VERBO = {record_created:'Criou', record_updated:'Alterou', record_deleted:'Excluiu'};
 function rotulo(evento, item){
   if (evento === 'page_view') return 'Abriu ' + (NOMES_TELA[item] || item);
