@@ -174,3 +174,9 @@ details.mais small.note{font-size:.72rem}
 .selbar{background:var(--pine-soft);border-radius:10px;padding:10px;margin:6px 0;position:sticky;top:0;z-index:2}
 .rsel{margin:4px 0}
 .rsel b{color:var(--fg)}
+/* filtros do topo nas telas financeiras: CPF/CNPJ e fazenda */
+.filtros{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.filtros .entsel{margin-top:0}
+.fsel{flex-direction:row;align-items:center;gap:8px}
+.fsel select{padding:7px 10px;width:auto;flex:1;min-width:0}
+optgroup{font-style:normal;font-weight:700}

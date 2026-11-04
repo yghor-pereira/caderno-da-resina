@@ -1,8 +1,9 @@
 import { brl, num, plural, esc, uid, hoje, safraIni, sum } from './util.js';
-import { saldoV, recV, abaixoDoRecebido, REG, liqV, arv, talByNome, talById, ramsDe, S, CORES_ENT, catIrDe } from './regras.js';
+import { saldoV, recV, abaixoDoRecebido, REG, liqV, arv, talByNome, talById, ramsDe, S, CORES_ENT, catIrDe, usarDados } from './regras.js';
 import { exemplo } from './exemplo.js';
-import { MODS, NAV_MOD, vazio, CUR, E, SES, usuario, propAtual, mod, abrirSessao, fecharSessao, suspender, usarPropriedadeId, definirEntidade, nomeEnt, lerFat,
-  completarCadastro, salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros, EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
+import { MODS, NAV_MOD, TELAS_FAZ, vazio, CUR, E, SES, usuario, fazAtual, dadosTela, mod, abrirSessao, fecharSessao, suspender, abrirFazenda, definirFiltro, nomeEnt,
+  entPadrao, emitentePadrao, inscricaoPara, contaPara, completarCadastro, salvar, salvarLote, apagar, limparFazenda, agendar, sincronizar, nPendentes, listaErros,
+  EX, linhasExemplo, regerarExemplo, prepararExemplo } from './estado.js';
 import { ultimoUsuario, apagarCacheDoEmail } from './local.js';
 import { track, atividade, tique } from './metricas.js';
 import { linha, linhasDoTalhao } from './mapa.js';
@@ -12,23 +13,23 @@ import { soDig, mascaraDoc, docValido } from './doc.js';
 import { ieValida } from './ie.js';
 import { V, chipEnt } from './telas.js';
 
-function usarPropriedade(pid){
-  usarPropriedadeId(pid);
-  E.talSel=null; E.ramSel=null; E.apTal=null; E.apSel=null; E.aberta=null; E.safraSel=CUR; E.fazEdit=null; E.editar=null; E.confirmar=null;
-  E.atual = pid==='todas' ? 'geral' : 'inicio';
-  render(); window.scrollTo(0,0);
+/* abre uma fazenda na aba Fazendas (floresta, ou produção se a floresta estiver desligada) */
+function irFazenda(fid){
+  abrirFazenda(fid);
+  E.talSel=null; E.ramSel=null; E.apTal=null; E.apSel=null; E.safraSel=CUR; E.editar=null; E.confirmar=null; E.limparPend=null;
+  ir(mod('floresta') ? 'floresta' : mod('producao') ? 'producao' : 'fazenda');
 }
-/* depois de uma sincronização que deu certo: completa o cadastro (CPF padrão, vínculos) e prepara a conta de exemplo.
+/* depois de uma sincronização que deu certo: completa o cadastro (CPF padrão, conta) e prepara a conta de exemplo.
    Se o servidor ainda não tem as tabelas novas (migração 0006 não aplicada), não mexe em nada. */
 async function sincronizarECompletar(){
   const r = await sincronizar();
   if (r.ok && !r.faltam?.length) { completarCadastro(); prepararExemplo(); }
 }
-/* depois do login: abre o cache do usuário, mostra as fazendas e sincroniza */
+/* depois do login: abre o cache do usuário, mostra o Início e sincroniza */
 async function aposLogin(u, modo){
   abrirSessao(u.id, {email:u.email, nome:u.user_metadata?.nome||''});
   track('login', {modo});
-  E.atual='fazendas'; E.sairPend=false; render(); window.scrollTo(0,0);
+  E.atual='inicio'; E.sairPend=false; render(); window.scrollTo(0,0);
   await sincronizarECompletar();
   E.admin = await ehAdmin(); if (E.atual==='conta') render({seguro:true});
 }
@@ -72,60 +73,63 @@ const hdr=document.getElementById('hdr'), nav=document.getElementById('nav');
 const emUso = () => !!document.querySelector('dialog[open]') || (app.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement.tagName));
 let renderPendente = false, telaMedida = null;
 E.render = render;
+/* telas que pertencem a cada aba do rodapé */
+const ABA = {floresta:'fazendas', producao:'fazendas', perdas:'fazendas', fazenda:'fazendas', cadastros:null, conta:null};
+const TELAS_FIN = ['inicio','caixa','vendas','resultado'];
 /* {seguro:true}: vindo da sincronização; não redesenha por cima de um formulário sendo preenchido */
 function render(op){
   if (op?.seguro && emUso()) { renderPendente=true; return; }
   renderPendente=false;
-  const u=usuario(), fid=SES.pid;
+  const u=usuario();
   if (E.atual==='carregando') { app.innerHTML='<p class="note">Abrindo o caderno…</p>'; hdr.innerHTML='<h1>Caderno da Resina</h1>'; nav.hidden=true; return; }
   if (!u) E.atual='login';
   else if (u.trocarSenha) E.atual='senha';   // senha temporária: nada mais abre antes de trocar
-  else if (E.atual==='senha') E.atual='fazendas';
-  else if (!fid && !['conta','cadastros'].includes(E.atual)) E.atual='fazendas';
-  else if (fid==='todas' && !['geral','conta','fazendas','cadastros'].includes(E.atual)) E.atual='geral';
-  if (propAtual() && NAV_MOD[E.atual] && !mod(NAV_MOD[E.atual])) E.atual='inicio';
-  if (E.atual==='inicio' && !propAtual()) E.atual = u? (fid==='todas'?'geral':'fazendas') : 'login';
+  else if (['senha','login','carregando'].includes(E.atual) || !V[E.atual]) E.atual='inicio';
+  /* telas da aba Fazendas precisam de uma fazenda aberta; abas de funções desligadas voltam ao Início */
+  if (u && TELAS_FAZ.includes(E.atual) && !fazAtual()) E.atual='fazendas';
+  if (u && NAV_MOD[E.atual] && !mod(NAV_MOD[E.atual])) E.atual='inicio';
+  if (u && ['floresta','perdas'].includes(E.atual) && !mod('floresta')) E.atual='fazenda';
+  if (u && E.atual==='producao' && !mod('producao')) E.atual='fazenda';
+  usarDados(dadosTela());
   app.innerHTML = `<div class="view wrap" style="max-width:none">${V[E.atual]()}</div>`;
-  const f=propAtual(), g=fid==='todas';
-  const ies = f ? (f.fazendas.length===1 ? 'IE '+esc(f.fazendas[0].ie) : f.fazendas.length+' inscrições') : '';
   hdr.innerHTML = !u ? `<h1>Caderno da Resina</h1><p>Gestão simples para quem vive do pinus</p>`
-    : `<div class="hrow"><div><h1>${g?'Visão geral':f?esc(f.nome):'Caderno da Resina'}</h1>
-        <p>${g? u.propriedades.filter(p=>p.fazendas.length).length+' propriedades · '+esc(u.nome) : f? ies+' · '+esc(f.municipio)+'/'+esc(f.uf) : esc(u.nome)}</p>
+    : `<div class="hrow"><div><h1>Caderno da Resina</h1><p>${esc(u.nome)}</p>
         <button type="button" id="sync" class="sync"></button></div>
-        <div class="hbtn">${(f||g)?'<button type="button" class="btn sm ghost" data-trocar="1">Trocar propriedade</button>':''}<button type="button" class="btn sm ghost" data-conta="1" ${E.atual==='conta'?'aria-current="page"':''}>Conta</button></div></div>
-        ${seletorEntidade(u, f, g)}`;
-  nav.hidden = !f || E.atual==='senha';
-  nav.querySelectorAll('button').forEach(b=>{ b.hidden = !!NAV_MOD[b.dataset.v] && !mod(NAV_MOD[b.dataset.v]);
-    if(b.dataset.v===E.atual) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
-  document.getElementById('demo').hidden = !(f && S.demo);
+        <div class="hbtn"><button type="button" class="btn sm ghost" data-conta="1" ${E.atual==='conta'||E.atual==='cadastros'?'aria-current="page"':''}>Conta</button></div></div>
+        ${TELAS_FIN.includes(E.atual) ? filtros(u) : ''}`;
+  nav.hidden = !u || E.atual==='senha';
+  const aba = ABA[E.atual]!==undefined ? ABA[E.atual] : E.atual;
+  nav.querySelectorAll('button').forEach(b=>{ const v=b.dataset.v;
+    b.hidden = v==='fazendas' ? !(mod('floresta')||mod('producao')) : !!NAV_MOD[v] && !mod(NAV_MOD[v]);
+    if(v===aba) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
+  document.getElementById('demo').hidden = !(u && TELAS_FAZ.includes(E.atual) && fazAtual()?.demo);
   if (E.atual==='login' && E.emailPre) { const el=document.getElementById('lEmail'); if (el) el.value=E.emailPre; }
   mostrarSync(); syncAp(); syncVenda();
-  /* métrica de tela: uma por troca de tela (ou de aba interna de Caixa e Floresta) */
+  /* métrica de tela: uma por troca de tela (ou de aba interna de Financeiro e Floresta) */
   const modo = E.atual==='floresta' ? E.flMode : E.atual==='caixa' ? E.modoCaixa : null, tela = E.atual+(modo?':'+modo:'');
   if (u && tela!==telaMedida) track('page_view', {tela:E.atual, ...(modo?{modo}:{})});
   telaMedida = u ? tela : null;
 }
-/* seletor no topo: "Todos" ou um CPF/CNPJ. Filtra o financeiro (Início, Caixa, Vendas, Resultado e Visão geral) */
-function seletorEntidade(u, f, g){
-  if ((!f && !g) || u.entidades.length<2 || ['conta','cadastros','fazendas','senha'].includes(E.atual)) return '';
-  const ligados = g ? null : new Set(f.fazendas.flatMap(z=>z.vinculos.map(v=>v.entidade)));
-  const ents = u.entidades.filter(e=>(e.ativo && (!ligados || ligados.has(e.id))) || e.id===u.entidadeSel);
-  if (ents.length<2 && !u.entidadeSel) return '';
-  return `<div class="chips entsel" role="group" aria-label="Mostrar o financeiro de"><button type="button" data-ent="" aria-pressed="${!u.entidadeSel}">Todos</button>${ents.map(e=>`<button type="button" data-ent="${e.id}" aria-pressed="${e.id===u.entidadeSel}">${chipEnt(e)}</button>`).join('')}</div>`;
+/* filtros do topo nas telas financeiras: CPF/CNPJ (chips com a cor) e fazenda. Ficam guardados por usuário. */
+function filtros(u){
+  const ents = u.entidades.filter(e=>e.ativo || e.id===u.entidadeSel);
+  const chips = ents.length>1 ? `<div class="chips entsel" role="group" aria-label="Mostrar o financeiro de"><button type="button" data-ent="" aria-pressed="${!u.entidadeSel}">Todos</button>${ents.map(e=>`<button type="button" data-ent="${e.id}" aria-pressed="${e.id===u.entidadeSel}">${chipEnt(e)}</button>`).join('')}</div>` : '';
+  const faz = u.fazendas.length>1 ? `<label class="fsel">Fazenda<select id="filtroFaz"><option value="">Todas as fazendas e gerais</option>${u.fazendas.map(f=>`<option value="${f.id}" ${f.id===u.fazendaSel?'selected':''}>${esc(f.nome)}</option>`).join('')}</select></label>` : '';
+  return chips || faz ? `<div class="filtros">${chips}${faz}</div>` : '';
 }
 function ir(v){ E.atual=v; E.editar=null; E.confirmar=null; E.sel=null; render(); window.scrollTo(0,0); }
 app.addEventListener('focusout',()=>setTimeout(()=>{ if(renderPendente && !emUso()) render(); },0));
 nav.addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) ir(b.dataset.v); });
 hdr.addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b) return;
-  if(b.dataset.trocar){ usarPropriedadeId(null); ir('fazendas'); }
-  if(b.dataset.ent!==undefined){ definirEntidade(b.dataset.ent||null); }
-  if(b.dataset.conta){ E.fazEdit=null; ir('conta'); }
+  if(b.dataset.ent!==undefined){ definirFiltro('entidade', b.dataset.ent||null); }
+  if(b.dataset.conta){ E.entEdit=null; ir('conta'); }
   if(b.id==='sync'){
     if(b.dataset.sync==='erros'){ ir('conta'); document.getElementById('erros')?.scrollIntoView({block:'start'}); }
     else if(b.dataset.sync==='login'){ E.emailPre=usuario()?.email||''; await fecharSessao(); E.lMode='entrar'; ir('login'); }
     else { track('feature_used', {funcao:'sincronizar_manual'}); sincronizar(); }
   } });
-document.getElementById('limpar').addEventListener('click',()=>{ for (const f of propAtual()?.fazendas||[]) if (f.demo) limparFazenda(f.id); });
+hdr.addEventListener('change',e=>{ if(e.target.id==='filtroFaz') definirFiltro('fazenda', e.target.value||null); });
+document.getElementById('limpar').addEventListener('click',()=>{ const f=fazAtual(); if (f?.demo) limparFazenda(f.id); });
 
 /* registros a apagar junto (filhos) quando o produtor exclui algo */
 function itensExcluir(tab, id){
@@ -138,8 +142,8 @@ function itensExcluir(tab, id){
 app.addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
   const d=b.dataset;
-  if(d.faz){ usarPropriedade(d.faz); }
-  else if(d.ir){ ir(d.ir); }
+  if(d.abrfaz){ irFazenda(d.abrfaz); }
+  else if(d.ir){ if(d.ir==='fazendas') E.fazSel=null; ir(d.ir); }
   else if(d.lmode){ E.lMode=d.lmode; E.lAviso=''; E.lErro=''; render(); }
   else if(d.demo){ b.disabled=true; b.textContent='Entrando…';
     try { await aposLogin(await entrar(EX.email, EX.senha), 'exemplo'); }
@@ -149,10 +153,7 @@ app.addEventListener('click',async e=>{
     if(d.sair===''){ E.sairPend=false; render(); }
     else if(!d.ok && nPendentes()){ E.sairPend=true; render(); }
     else { track('logout'); await fecharSessao(); E.sairPend=false; E.lMode='entrar'; E.emailPre=''; ir('login'); } }
-  else if(d.editfaz!==undefined){ E.fazEdit=d.editfaz||null; E.limparPend=null; E.vincEdit=null; render(); document.getElementById('fFaz')?.scrollIntoView({block:'nearest'}); }
-  else if(d.propedit!==undefined){ E.propEdit=d.propedit||null; render(); }
   else if(d.entedit!==undefined){ E.entEdit=d.entedit||null; E.confirmar=null; render(); document.getElementById('fEnt')?.scrollIntoView({block:'nearest'}); }
-  else if(d.vincedit!==undefined){ E.vincEdit=d.vincedit||null; E.fazEdit=null; render(); document.getElementById('fVinc')?.scrollIntoView({block:'nearest'}); }
   else if(d.limpafaz!==undefined){
     if(d.ok){ E.limparPend=null; limparFazenda(d.limpafaz); }
     else { E.limparPend=d.limpafaz||null; render(); } }
@@ -165,14 +166,15 @@ app.addEventListener('click',async e=>{
   else if(d.aptal){ E.apTal=d.aptal; E.apSel=null; render(); }
   else if(d.apall){ document.querySelectorAll('#fAp input[name=ram]').forEach(c=>c.checked=d.apall==='1'); syncAp(); }
   else if(d.goap){ E.atual='floresta'; E.flMode='apontar'; E.opTipo=d.goap; E.apSel=null; render(); window.scrollTo(0,0); }
-  else if(d.reg){ track('feature_used', {funcao:'regime_alterado'}); salvar('fazendas', {id:d.regfaz, regime:d.reg}); }
   else if(d.modo){ E.modoCaixa=d.modo; E.editar=null; E.confirmar=null; E.sel=null; render(); }
   else if(d.tipo){ E.tipoLanc=d.tipo; render(); }
   else if(d.sel!==undefined){ E.sel = d.sel ? {tab:d.sel, ids:new Set()} : null; E.editar=null; E.confirmar=null; render(); }
   else if(d.selall){ document.querySelectorAll('input[name=selid]').forEach(c=>c.checked=d.selall==='1'); syncSel(); }
   else if(d.realizar){ const c=S.comp.find(x=>x.id===d.realizar); if(!c) return; track('feature_used', {funcao:'compromisso_pago'});
-    /* o pagamento entra no caixa com a data de hoje (ou a do vencimento, se já passou); a competência é a do compromisso */
-    salvarLote([['compromissos',{id:c.id, deleted_at:agoraIso()}], ['lancamentos', linha.lancamento({...c, id:uid(), competencia:c.competencia||c.data, data: c.data<hoje()? c.data : hoje()}, c.fazenda)]]); }
+    /* o pagamento entra com a data de hoje (ou a do vencimento, se já passou), na conta do CPF/CNPJ; a competência é a do compromisso */
+    const ent=usuario().entidades.find(x=>x.id===c.entidade);
+    salvarLote([['compromissos',{id:c.id, deleted_at:agoraIso()}], ['lancamentos', linha.lancamento({...c, id:uid(), competencia:c.competencia||c.data,
+      data: c.data<hoje()? c.data : hoje(), conta:contaPara(ent)?.id||null})]]); }
   else if(d.emitir){ abrirEmissao(d.emitir); }
   else if(d.comnota){ E.aberta=d.comnota; salvar('vendas', {id:d.comnota, com_nota:true}); abrirEmissao(d.comnota); }
   else if(d.excluir!==undefined){
@@ -184,25 +186,37 @@ app.addEventListener('click',async e=>{
 app.addEventListener('toggle',e=>{ const d=e.target; if(!d.matches?.('details.venda')) return;
   if(d.open) E.aberta=d.dataset.venda; else if(E.aberta===d.dataset.venda) E.aberta=null; }, true);
 app.addEventListener('change',e=>{
-  if(e.target.id==='ideal'){ const v=+e.target.value; if(v>=7&&v<=30){ track('feature_used', {funcao:'intervalo_alterado'});
-    /* o intervalo vale para a propriedade toda: grava em todas as inscrições dela */
-    salvarLote((propAtual()?.fazendas||[]).map(f=>['fazendas', {id:f.id, intervalo_ideal:v}])); } }
-  if(e.target.name==='ram') syncAp();
-  if(e.target.name==='mod') syncMods(e.target);
-  if(e.target.name==='selid') syncSel();
-  if(e.target.name==='fat' && e.target.form?.id==='fVenda') syncVenda();
+  const t=e.target, f=t.form;
+  if(t.id==='ideal'){ const v=+t.value; if(v>=7&&v<=30 && E.fazSel){ track('feature_used', {funcao:'intervalo_alterado'}); salvar('fazendas', {id:E.fazSel, intervalo_ideal:v}); } }
+  if(t.name==='ram') syncAp();
+  if(t.name==='mod') syncMods(t);
+  if(t.name==='selid') syncSel();
+  /* trocou o CPF/CNPJ: a conta e a inscrição acompanham */
+  if(t.name==='ent' && f) sugerirConta(f);
+  if((t.name==='ent' || t.name==='faz') && f?.id==='fVenda') sugerirIe(f);
+  if(f?.id==='fVenda') syncVenda();
 });
 function syncSel(){
   if(!E.sel) return;
   E.sel.ids=new Set([...document.querySelectorAll('input[name=selid]:checked')].map(c=>c.value));
   const el=document.getElementById('selN'); if(el) el.textContent=plural(E.sel.ids.size,'selecionado','selecionados');
 }
+const entDoForm = f => usuario().entidades.find(x=>x.id===f.elements.namedItem('ent')?.value) || null;
+function sugerirConta(f){
+  const sel=f.elements.namedItem('conta'), ent=entDoForm(f); if(!sel || !ent) return;
+  const atual=sel.selectedOptions[0];
+  if(!atual?.value || atual.dataset.ent!==ent.id) sel.value = contaPara(ent)?.id || '';
+}
+function sugerirIe(f){
+  const sel=f.elements.namedItem('ie'), ent=entDoForm(f); if(!sel || !ent) return;
+  const faz=usuario().fazendas.find(x=>x.id===f.elements.namedItem('faz')?.value);
+  sel.value = inscricaoPara(ent, faz)?.id || '';
+}
 /* IE nova ou alterada: formato, dígito verificador e se já existe (nesta conta ou em outra) */
-async function erroIe(ie, uf, id, antes){
+async function erroIe(ie, uf, id){
   if(ie.length<8 || ie.length>14) return 'A Inscrição Estadual deve ter de 8 a 14 dígitos.';
-  /* só confere o dígito de IE nova ou alterada: a conta de exemplo usa IEs fictícias */
-  if((!antes || antes.ie!==ie || antes.uf!==uf) && !ieValida(ie, uf)) return `Inscrição Estadual inválida para ${uf}.`;
-  if(usuario().fazendas.some(z=>z.ie===ie && z.id!==id)) return 'Você já tem uma inscrição com este número.';
+  if(!ieValida(ie, uf)) return `Inscrição Estadual inválida para ${uf}.`;
+  if(usuario().entidades.some(e=>e.inscricoes.some(i=>i.ie===ie && i.id!==id))) return 'Esta inscrição já está cadastrada num dos seus CPFs/CNPJs.';
   if(await ieDisponivel(ie, id||null)===false) return 'Esta Inscrição Estadual já está cadastrada em outra conta.';
   return null;
 }
@@ -216,7 +230,6 @@ function lerDoc(el){
 app.addEventListener('submit',async e=>{
   e.preventDefault(); const $=id=>document.getElementById(id); const f=e.target.id, fm=e.target, el=n=>fm.elements.namedItem(n);
   const erro=(id,m)=>{ const x=id?$(id):fm.querySelector('.err'); x.textContent=m; x.hidden=false; };
-  const p=propAtual(), principal=p?.fazendas[0]?.id;
   if(f==='fLogin'){ E.lAviso=''; E.lErro=''; const email=$('lEmail').value.trim().toLowerCase(), senha=$('lSenha').value, btn=e.target.querySelector('.btn');
     btn.disabled=true;
     try {
@@ -234,80 +247,58 @@ app.addEventListener('submit',async e=>{
     catch(err){ btn.disabled=false; erro('sErr', err.message); }
     return; }
   if(f==='fUser'){ salvar('perfis', {id:usuario().id, nome:$('uNome').value.trim()}); return; }
-  /* propriedade nova, já com a primeira inscrição e o vínculo com o CPF/CNPJ que fatura por ela */
-  if(f==='fProp'){ const u=usuario(), ie=soDig($('pIe').value), uf=$('pUf').value;
-    const m=await erroIe(ie, uf, null, null); if(m) return erro('pErr', m);
-    const prop={id:uid(), nome:$('pNome').value.trim(), municipio:$('pMun').value.trim(), uf}, regime=$('pReg').value;
-    const ent=$('pEnt')?.value || (u.entidades.find(x=>x.padrao)||u.entidades[0])?.id || null;
-    const faz={id:uid(), propriedade_id:prop.id, nome:prop.nome, ie, doc:'', municipio:prop.municipio, uf};
-    const itens=[['propriedades', linha.propriedade(prop)]];
-    if($('pEx').checked){ track('record_created', {tabela:'fazendas'}); track('feature_used', {funcao:'dados_exemplo'});
-      itens.push(...linhasExemplo(faz, exemplo(2+Math.floor(Math.random()*997), null, regime), {padrao:ent})); }
-    else itens.push(['fazendas', linha.fazenda(faz, {...vazio(), regime})]);
-    if(ent) itens.push(['vinculos', linha.vinculo({id:uid(), fazenda:faz.id, entidade:ent, percentual:100, condicao:'PROPRIETARIO', padrao:true})]);
-    salvarLote(itens, {metrica:!$('pEx').checked});
-    if(E.atual==='fazendas') usarPropriedade(prop.id);
-    return; }
-  if(f==='fPropEd'){ const u=usuario(), pr=u.propriedades.find(x=>x.id===fm.dataset.id); if(!pr) return;
-    const area=el('area').value, campos={nome:el('nome').value.trim(), municipio:el('mun').value.trim(), uf:el('uf').value, area_ha:area===''?null:+area, nirf_cib:el('nirf').value.trim(), car:el('car').value.trim()};
-    E.propEdit=null;
-    /* propriedade virtual (fazenda antiga sem propriedade): vira uma propriedade de verdade */
-    if(pr.virtual){ const id=uid(); if(SES.pid===pr.id) SES.pid=id;
-      return salvarLote([['propriedades', linha.propriedade({id, ...campos})], ...pr.fazendas.map(z=>['fazendas', {id:z.id, propriedade_id:id}])]); }
-    return salvar('propriedades', {id:pr.id, ...campos}); }
-  if(f==='fFaz'){ const u=usuario(), id=fm.dataset.id, ie=soDig($('zIe').value), uf=$('zUf').value, antes=u.fazendas.find(z=>z.id===id);
-    const m=await erroIe(ie, uf, id, antes); if(m) return erro('zErr', m);
-    const campos={nome:$('zNome').value.trim(), ie, municipio:$('zMun').value.trim(), uf, regime:$('zReg').value};
-    const pr=u.propriedades.find(x=>x.id===fm.dataset.prop), destino=$('zProp')?.value;
-    E.fazEdit=null;
-    if(id) return salvar('fazendas', {id, ...campos, ...(destino && destino!==pr?.id ? {propriedade_id:destino} : {})});
-    /* inscrição nova: na propriedade (se virtual, a propriedade é criada junto) e vinculada ao CPF/CNPJ padrão */
-    const itens=[], ent=(u.entidades.find(x=>x.padrao)||u.entidades[0])?.id;
-    let pid=pr.id;
-    if(pr.virtual){ pid=uid(); itens.push(['propriedades', linha.propriedade({...pr, id:pid})], ...pr.fazendas.map(z=>['fazendas', {id:z.id, propriedade_id:pid}])); }
-    const nova={id:uid(), propriedade_id:pid, doc:'', ...campos};
-    itens.push(['fazendas', linha.fazenda(nova, {...vazio(), regime:campos.regime})]);
-    if(ent) itens.push(['vinculos', linha.vinculo({id:uid(), fazenda:nova.id, entidade:ent, percentual:100, condicao:'PROPRIETARIO', padrao:true})]);
-    return salvarLote(itens); }
+  /* fazenda = o imóvel (sem inscrição estadual) */
+  if(f==='fFaz'){ const id=fm.dataset.id, area=$('zArea').value;
+    const campos={nome:$('zNome').value.trim(), municipio:$('zMun').value.trim(), uf:$('zUf').value, area_ha:area===''?null:+area, nirf_cib:$('zNirf').value.trim(), car:$('zCar').value.trim()};
+    if(usuario().fazendas.some(z=>z.nome.toLowerCase()===campos.nome.toLowerCase() && z.id!==id)) return erro('zErr','Você já tem uma fazenda com esse nome.');
+    if(id) return salvar('fazendas', {id, ...campos});
+    const nova={id:uid(), doc:'', ...campos};
+    if($('zEx').checked){ track('record_created', {tabela:'fazendas'}); track('feature_used', {funcao:'dados_exemplo'});
+      const ent=entPadrao();
+      salvarLote(linhasExemplo(nova, exemplo(2+Math.floor(Math.random()*997)), {padrao: ent ? {ent:ent.id, ie:inscricaoPara(ent, nova)?.id||null, conta:contaPara(ent)?.id||null} : null}), {metrica:false}); }
+    else salvar('fazendas', linha.fazenda(nova, vazio()));
+    return irFazenda(nova.id); }
   if(f==='fEnt'){ const u=usuario(), id=fm.dataset.id, antes=u.entidades.find(x=>x.id===id), tipo=el('tipo').value, doc=soDig(el('doc').value);
     if(doc && !docValido(doc, tipo)) return erro(null, tipo==='PF'?'CPF inválido: confira os números (11 dígitos).':'CNPJ inválido: confira os números (14 dígitos).');
     if(doc && u.entidades.some(x=>x.documento===doc && x.id!==id)) return erro(null, 'Este CPF/CNPJ já está cadastrado.');
     const padrao=antes?.padrao || el('padrao').checked || !u.entidades.length;
     const ent={id:id||uid(), tipo, nome:el('nome').value.trim(), apelido:el('apelido').value.trim(), documento:doc, cor:el('cor')?.value||CORES_ENT[0],
-      regime:el('regime').value, padrao, ativo:padrao || el('ativo').checked};
-    E.entEdit=null;
+      regime:el('regime').value, previdencia:el('prev').value, padrao, ativo:padrao || el('ativo').checked};
+    E.entEdit = id ? null : ent.id;   // CPF/CNPJ novo continua aberto, para cadastrar inscrições e contas
     /* marcar como padrão desmarca o anterior (o banco faz o mesmo; aqui é para a tela já mostrar certo) */
     const antigo=padrao && !antes?.padrao ? u.entidades.filter(x=>x.padrao && x.id!==ent.id).map(x=>['entidades_fiscais', {id:x.id, padrao:false}]) : [];
     return salvarLote([...antigo, ['entidades_fiscais', linha.entidade(ent)]]); }
-  if(f==='fConta'){ salvar('contas_bancarias', linha.conta({id:uid(), entidade:fm.dataset.ent, banco:el('banco').value.trim(), apelido:el('apelido').value.trim(),
-    agencia:el('ag').value.trim(), conta:el('cc').value.trim()})); return; }
-  if(f==='fVinc'){ const u=usuario(), fz=u.fazendas.find(x=>x.id===fm.dataset.fazenda), id=fm.dataset.id, antes=fz?.vinculos.find(v=>v.id===id);
-    const ent=antes?.entidade || el('ent').value, ini=el('ini').value||null, fim=el('fim').value||null;
-    if(!fz || !ent) return;
-    if(!antes && fz.vinculos.some(v=>v.entidade===ent)) return erro(null, 'Este CPF/CNPJ já está vinculado a esta inscrição.');
-    if(ini && fim && fim<ini) return erro(null, 'O fim da vigência é antes do início.');
-    const padrao=antes?.padrao || el('padrao').checked || !fz.vinculos.length;
-    const v={id:id||uid(), fazenda:fz.id, entidade:ent, percentual:+el('pct').value, condicao:el('cond').value, padrao, inicio:ini, fim};
-    E.vincEdit=null;
-    const antigo=padrao && !antes?.padrao ? fz.vinculos.filter(x=>x.padrao && x.id!==v.id).map(x=>['vinculos', {id:x.id, padrao:false}]) : [];
-    return salvarLote([...antigo, ['vinculos', linha.vinculo(v)]]); }
+  if(f==='fIns'){ const ie=soDig(el('ie').value), uf=el('uf').value;
+    const m=await erroIe(ie, uf, null); if(m) return erro(null, m);
+    return salvar('inscricoes_estaduais', linha.inscricao({id:uid(), entidade:fm.dataset.ent, ie, uf, municipio:el('mun').value.trim(), descricao:el('desc').value.trim()})); }
+  if(f==='fConta'){ return salvar('contas_bancarias', linha.conta({id:uid(), entidade:fm.dataset.ent, banco:el('banco').value.trim(), apelido:el('apelido').value.trim(),
+    agencia:el('ag').value.trim(), conta:el('cc').value.trim(), saldoInicial:+el('saldo').value||0})); }
   if(f==='fCaixa'){ const dc=lerDoc(el); if(dc.erro) return erro(null, dc.erro);
-    const it={id:uid(), data:el('data').value, tipo:E.tipoLanc, cat:el('cat').value, desc:el('desc').value.trim(), valor:+el('valor').value, ...lerFatForm(el, principal), ...dc};
-    return salvar(E.modoCaixa==='real'?'lancamentos':'compromissos', linha.lancamento(it, principal)); }
-  if(f==='fMover'){ const {fazenda, entidade}=lerFat(el('dest').value), tab=fm.dataset.tab, ids=[...(E.sel?.ids||[])];
+    const it={id:uid(), data:el('data').value, tipo:E.tipoLanc, cat:el('cat').value, desc:el('desc').value.trim(), valor:+el('valor').value,
+      entidade:el('ent')?.value||entPadrao()?.id||null, fazenda:el('faz').value||null, ...dc};
+    return salvar(E.modoCaixa==='real'?'lancamentos':'compromissos', linha.lancamento(it)); }
+  if(f==='fMover'){ const tab=fm.dataset.tab, ids=[...(E.sel?.ids||[])], ent=el('ent').value, faz=el('faz').value;
     if(!ids.length) return erro(null, 'Marque ao menos um registro.');
+    if(!ent && !faz) return erro(null, 'Escolha o CPF/CNPJ ou a fazenda de destino.');
+    const muda={...(ent?{entidade_id:ent}:{}), ...(faz?{fazenda_id:faz==='-'?null:faz}:{})};
+    /* venda que muda de CPF/CNPJ troca também a inscrição de quem emite (a do novo, na UF da fazenda) */
+    const e2=usuario().entidades.find(x=>x.id===ent);
+    const itens=ids.map(id=>{ if(tab!=='vendas' || !e2) return [tab, {id, ...muda}];
+      const v=S.vendas.find(x=>x.id===id), fz=usuario().fazendas.find(x=>x.id===(faz||v?.fazenda));
+      return [tab, {id, ...muda, inscricao_id:inscricaoPara(e2, fz)?.id||null}]; });
     track('feature_used', {funcao:'mover_lote', tabela:tab, qtd:ids.length});
     E.sel=null;
-    return salvarLote(ids.map(id=>[tab, {id, fazenda_id:fazenda, entidade_id:entidade}]), {metrica:false}); }
+    return salvarLote(itens, {metrica:false}); }
+  if(f==='fPerda'){ return salvar('perdas', linha.perda({id:uid(), data:el('data').value, kg:+el('kg').value, motivo:el('motivo').value, talhao:el('tal').value||null,
+    obs:el('obs').value.trim()}, E.fazSel)); }
   if(f==='fAp'){ const t=talById(E.apTal), ids=[...E.apSel];
     if(!ids.length){ $('apSum').innerHTML='<span class="down">Marque ao menos um ramal.</span>'; return; }
     E.apSel=null;
-    /* a operação é da inscrição dona do talhão */
     if(E.opTipo==='estria') return salvar('estrias', linha.estria({id:uid(),data:$('aData').value,talhao:t.id,ramais:ids,qtd:sum(ramsDe(t,ids),arv),dias:+$('aDias').value,resineiro:$('aRes').value.trim()}, t.fazenda));
     return salvar('coletas', linha.coleta({id:uid(),data:$('aData').value,talhao:t.id,ramais:ids,kg:+$('aKg').value}, t.fazenda)); }
   if(f==='fTal'){ const nome=$('tNome').value.trim();
     if(talByNome(nome)) return erro('tErr','Já existe um talhão com esse nome.');
-    const t={id:uid(),nome}; E.talSel=t.id; return salvar('talhoes', linha.talhao(t, $('tFaz')?.value || principal)); }
+    const t={id:uid(),nome}; E.talSel=t.id; return salvar('talhoes', linha.talhao(t, E.fazSel)); }
   if(f==='fRam'){ const t=talById(E.talSel), cod=$('rCod').value.trim();
     if(t.ramais.some(r=>r.cod===cod)) return erro('rErr','Já existe um ramal com esse código neste talhão.');
     const r={id:uid(),cod}, h={id:uid(),data:hoje(),arv:+$('rArv').value,motivo:'Contagem inicial'};
@@ -320,11 +311,12 @@ app.addEventListener('submit',async e=>{
   if(f==='fEdRam'){ const id=e.target.dataset.id, cod=$('erCod').value.trim(), t=talById(E.talSel);
     if(t?.ramais.some(r=>r.cod===cod && r.id!==id)) return erro('erErr','Já existe um ramal com esse código neste talhão.');
     E.editar=null; return salvar('ramais', {id, cod}); }
-  if(f==='fVenda'){ const q=lerFatForm(el, principal), faz=S.fazendas.find(z=>z.id===q.fazenda);
-    const v={id:uid(),data:$('vData').value,comprador:$('vComp').value.trim(),kg:+$('vKg').value,preco:+$('vPreco').value,fator:(REG[faz?.regime]||REG.funrural).f,
-      comNota:mod('nfe')&&$('vNota')?.value==='1',nf:null,recs:[],venc:$('vVenc').value||hoje(), ...q, tipoDoc:mod('nfe')&&$('vNota')?.value==='1'?'NF':null};
-    const itens=[['vendas', linha.venda(v, principal)]];
-    if($('vRec').value==='1') itens.push(['recebimentos', linha.recebimento({id:uid(),data:v.data,valor:liqV(v),forma:'Dinheiro'}, v.id)]);
+  /* venda: sai de uma fazenda e é emitida por um CPF/CNPJ (uma das inscrições dele); o desconto é o do regime dele */
+  if(f==='fVenda'){ const ent=entDoForm(fm) || entPadrao(), nota=mod('nfe')&&$('vNota')?.value==='1';
+    const v={id:uid(),data:$('vData').value,comprador:$('vComp').value.trim(),kg:+$('vKg').value,preco:+$('vPreco').value,fator:(REG[ent?.previdencia]||REG.funrural).f,
+      comNota:nota,nf:null,recs:[],venc:$('vVenc').value||hoje(), fazenda:el('faz').value, entidade:ent?.id||null, inscricao:el('ie')?.value||null, tipoDoc:nota?'NF':null};
+    const itens=[['vendas', linha.venda(v)]];
+    if($('vRec').value==='1') itens.push(['recebimentos', linha.recebimento({id:uid(),data:v.data,valor:liqV(v),forma:'Dinheiro',conta:contaPara(ent)?.id||null}, v.id)]);
     E.aberta=v.id; E.safraSel=safraIni(v.data);
     salvarLote(itens);
     if(v.comNota) abrirEmissao(v.id);
@@ -336,37 +328,30 @@ app.addEventListener('submit',async e=>{
     return;
   }
   if(fm.classList.contains('fEdLanc')){ const dc=lerDoc(el); if(dc.erro) return erro(null, dc.erro);
-    const q=lerFatForm(el, null), tipo=fm.dataset.tipo, cat=el('cat').value;
+    const tipo=fm.dataset.tipo, cat=el('cat').value;
     E.editar=null;
     return salvar(fm.dataset.tab, {id:fm.dataset.id, data:el('data').value, valor:+el('valor').value, cat, descr:el('desc').value.trim(),
-      ...(q.fazenda?{fazenda_id:q.fazenda, entidade_id:q.entidade}:{}),
+      ...(el('ent')?{entidade_id:el('ent').value}:{}), fazenda_id:el('faz').value||null,
       data_competencia:dc.competencia||el('data').value, categoria_irpf:dc.catIr||catIrDe({tipo, cat}), tipo_documento:dc.tipoDoc, numero_documento:dc.numDoc,
-      contraparte_nome:dc.contraparteNome, contraparte_documento:dc.contraparteDoc, conta_bancaria_id:dc.conta}); }
+      contraparte_nome:dc.contraparteNome, contraparte_documento:dc.contraparteDoc, ...(el('conta')?{conta_bancaria_id:dc.conta}:{})}); }
   if(fm.classList.contains('fEdVenda')){ const v=S.vendas.find(x=>x.id===fm.dataset.id);
     if(v && abaixoDoRecebido(v, +el('kg').value, +el('preco').value)){ const p=fm.querySelector('.err');
       p.textContent=`Já foram recebidos ${brl(recV(v))} nesta venda. O valor não pode ficar abaixo disso.`; p.hidden=false; return; }
-    const q=lerFatForm(el, null);
     E.editar=null;
     return salvar('vendas', {id:fm.dataset.id, comprador:el('comprador').value.trim(), kg:+el('kg').value, preco:+el('preco').value, data:el('data').value, venc:el('venc').value||null,
-      ...(q.fazenda?{fazenda_id:q.fazenda, entidade_id:q.entidade}:{})}); }
+      fazenda_id:el('faz').value, ...(el('ent')?{entidade_id:el('ent').value, inscricao_id:el('ie')?.value||null}:{})}); }
 });
-/* "Faturado por" marcado no formulário → {fazenda, entidade}; sem o campo, a inscrição principal */
-function lerFatForm(el, principal){
-  const v=el('fat')?.value;
-  return v ? lerFat(v) : {fazenda:principal, entidade:null};
-}
 function syncAp(){
   const t=talById(E.apTal), box=document.getElementById('apSum'); if(!t||!box) return;
   E.apSel=new Set([...document.querySelectorAll('#fAp input[name=ram]:checked')].map(c=>c.value));
   const rr=ramsDe(t,[...E.apSel]), a=sum(rr,arv);
   box.innerHTML = rr.length ? `<div class="rec"><span>${rr.length} de ${plural(t.ramais.length,'ramal','ramais')}</span><b>${plural(a,'árvore','árvores')}${E.opTipo==='estria'?' = '+plural(a,'estria','estrias'):''}</b></div>` : '<span class="note">Nenhum ramal marcado.</span>';
 }
-/* prévia da venda com o regime da inscrição escolhida em "Faturado por" */
+/* prévia da venda com o regime (Funrural ou folha) de quem emite a nota */
 function syncVenda(){
-  const box=document.getElementById('vPrev'); if(!box) return;
+  const box=document.getElementById('vPrev'), f=document.getElementById('fVenda'); if(!box||!f) return;
   const kg=+document.getElementById('vKg').value||0, p=+document.getElementById('vPreco').value||0;
-  const fz=document.querySelector('#fVenda input[name=fat]:checked')?.value, faz=S.fazendas.find(z=>z.id===lerFat(fz).fazenda) || S.fazendas[0];
-  const r=REG[faz?.regime]||REG.funrural;
+  const r=REG[(entDoForm(f)||entPadrao())?.previdencia]||REG.funrural;
   box.innerHTML=`<div class="rec"><span>Preço livre (${r.nome})</span><b class="liv">${brl(p*r.f)}/kg</b></div><div class="rec"><span>Você recebe</span><b>${brl(kg*p*r.f)}</b></div>`;
 }
 app.addEventListener('input',e=>{

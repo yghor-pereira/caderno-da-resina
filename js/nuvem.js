@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_ANON } from './config.js';
 import { cursorDe, mesclar, tirarDaFila, marcarErro, erros, compactar } from './local.js';
 
 /* pais antes dos filhos, por causa das chaves estrangeiras */
-const ORDEM = ['perfis','propriedades','entidades_fiscais','contas_bancarias','fazendas','vinculos','talhoes','ramais','contagens','estrias','coletas',
+const ORDEM = ['perfis','entidades_fiscais','inscricoes_estaduais','contas_bancarias','fazendas','talhoes','ramais','contagens','estrias','coletas','perdas',
   'vendas','recebimentos','lancamentos','compromissos','compradores','rateios'];
 const PAGINA = 1000;
 
@@ -15,7 +15,7 @@ const ehDeDado = e => !ehSessao(e) && (/^[0-9A-Z]{5}$/.test(e?.code||'') || /^PG
 function mensagem(tabela, e){
   if (e.code==='23505' && tabela==='fazendas') return 'Esta Inscrição Estadual já está cadastrada em outra conta.';
   if (e.code==='23505' && tabela==='entidades_fiscais') return 'Este CPF/CNPJ já está cadastrado na sua conta.';
-  if (e.code==='23505' && tabela==='vinculos') return 'Este CPF/CNPJ já está vinculado a esta inscrição.';
+  if (e.code==='23505' && tabela==='inscricoes_estaduais') return 'Esta Inscrição Estadual já está cadastrada em outra conta.';
   return 'Não foi possível salvar: '+(e.message||e.code);
 }
 

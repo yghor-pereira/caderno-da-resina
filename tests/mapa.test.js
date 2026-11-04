@@ -18,20 +18,21 @@ beforeEach(() => {
 });
 
 test('ida e volta: tabelas remontam os mesmos dados do exemplo', () => {
-  const S = montarDados(L, FID);
+  const S = montarDados(L, { fazenda: FID });
   assert.equal(S.talhoes.length, ex.talhoes.length);
   assert.deepEqual(S.talhoes.map(t => t.ramais.length), ex.talhoes.map(t => t.ramais.length));
   for (const k of ['estrias', 'producao', 'vendas', 'caixa', 'comp']) assert.equal(S[k].length, ex[k].length, k);
   assert.equal(S.vendas.flatMap(v => v.recs).length, ex.vendas.flatMap(v => v.recs).length);
-  assert.equal(S.regime, 'funrural'); assert.equal(S.ideal, 14); assert.equal(S.saldoInicial, 9000); assert.equal(S.demo, true);
-  usarDados(ex); const a = [tot(2026), tot(2025), statusTalhoes().map(s => s.atraso), saldoAtual()];
+  assert.equal(S.regime, 'funrural'); assert.equal(S.ideal, 14); assert.equal(S.demo, true);
+  assert.equal(S.saldoInicial, 0, 'o saldo inicial agora é das contas bancárias');
+  usarDados({ ...ex, saldoInicial: 0 }); const a = [tot(2026), tot(2025), statusTalhoes().map(s => s.atraso), saldoAtual()];
   usarDados(S); const b = [tot(2026), tot(2025), statusTalhoes().map(s => s.atraso), saldoAtual()];
   assert.deepEqual(b, a);
 });
 
 test('colunas no formato do banco', () => {
   const l = dadosParaLinhas(ex, FID);
-  assert.deepEqual(Object.keys(l.vendas[0]).sort(), ['com_nota', 'comprador', 'data', 'entidade_id', 'fator', 'fazenda_id', 'id', 'kg', 'nf', 'numero_documento', 'preco', 'tipo_documento', 'venc']);
+  assert.deepEqual(Object.keys(l.vendas[0]).sort(), ['com_nota', 'comprador', 'data', 'entidade_id', 'fator', 'fazenda_id', 'id', 'inscricao_id', 'kg', 'nf', 'numero_documento', 'preco', 'tipo_documento', 'venc']);
   assert.deepEqual(Object.keys(l.lancamentos[0]).sort(), ['anexo_url', 'cat', 'categoria_irpf', 'conta_bancaria_id', 'contraparte_documento', 'contraparte_nome', 'data',
     'data_competencia', 'descr', 'entidade_id', 'fazenda_id', 'id', 'numero_documento', 'tipo', 'tipo_documento', 'valor']);
   assert.deepEqual(Object.keys(l.contagens[0]).sort(), ['arvores', 'data', 'id', 'motivo', 'ramal_id']);
@@ -41,7 +42,7 @@ test('colunas no formato do banco', () => {
 test('excluir um talhão esconde seus ramais, estrias e coletas', () => {
   const t = ex.talhoes[0];
   excluir(L, 'talhoes', t.id);
-  const S = montarDados(L, FID);
+  const S = montarDados(L, { fazenda: FID });
   assert.ok(!S.talhoes.some(x => x.id === t.id));
   assert.ok(!S.estrias.some(e => e.talhao === t.id));
   assert.ok(!S.producao.some(p => p.talhao === t.id));
@@ -50,11 +51,11 @@ test('excluir um talhão esconde seus ramais, estrias e coletas', () => {
 test('excluir uma venda esconde seus recebimentos', () => {
   const v = ex.vendas.find(x => x.recs.length);
   excluir(L, 'vendas', v.id);
-  assert.ok(!montarDados(L, FID).vendas.some(x => x.id === v.id));
+  assert.ok(!montarDados(L, { fazenda: FID }).vendas.some(x => x.id === v.id));
 });
 
 test('ramais e talhões aparecem em ordem de código e nome', () => {
-  const S = montarDados(L, FID);
+  const S = montarDados(L, { fazenda: FID });
   assert.deepEqual(S.talhoes.map(t => t.nome), ['Talhão A', 'Talhão B', 'Talhão C']);
   assert.deepEqual(S.talhoes[0].ramais.slice(0, 3).map(r => r.cod), ['R-01', 'R-02', 'R-03']);
 });

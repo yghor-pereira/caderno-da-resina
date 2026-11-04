@@ -64,16 +64,16 @@ const inSafra = y => x => safraIni(x.data)===y;
 const totPaineis = () => sum(S.talhoes, painT);
 function tot(y){
   const f = inSafra(y);
-  const cx=S.caixa.filter(f), pr=S.producao.filter(f), es=S.estrias.filter(f), ve=S.vendas.filter(f);
+  const cx=S.caixa.filter(f), pr=S.producao.filter(f), es=S.estrias.filter(f), ve=S.vendas.filter(f), kgPerda=sum((S.perdas||[]).filter(f),x=>x.kg);
   const desp=sum(cx.filter(x=>x.tipo==='d'),x=>x.valor), outras=sum(cx.filter(x=>x.tipo==='r'),x=>x.valor);
   const vendido=sum(ve,totalV), liquido=sum(ve,liqV), kgProd=sum(pr,x=>x.kg), kgVend=sum(ve,x=>x.kg);
   const nEst=sum(es,x=>x.qtd), dias=sum(es,x=>x.dias), pain=totPaineis(), receita=liquido+outras;
-  return {desp,outras,vendido,liquido,contrib:vendido-liquido,aReceber:sum(ve,saldoV),kgProd,kgVend,nEst,dias,receita,
+  return {kgPerda,desp,outras,vendido,liquido,contrib:vendido-liquido,aReceber:sum(ve,saldoV),kgProd,kgVend,nEst,dias,receita,
     lucro:receita-desp, kgPainel:pain?kgProd/pain:0, kgEstria:nEst?kgProd/nEst:0, estDia:dias?nEst/dias:0,
     custoKg:kgProd?desp/kgProd:0, precoMedio:kgVend?vendido/kgVend:0, precoLivre:kgVend?liquido/kgVend:0, custoPainel:pain?desp/pain:0};
 }
-/* o estoque é da propriedade: não depende de quem faturou (usa todas as vendas, mesmo com filtro de CPF/CNPJ) */
-const estoque = () => sum(S.producao,x=>x.kg) - sum(S.todas?.vendas||S.vendas,x=>x.kg);
+/* estoque = coletado − vendido − perdido. Não depende de quem faturou (usa todas as vendas, mesmo com filtro de CPF/CNPJ) */
+const estoque = () => sum(S.producao,x=>x.kg) - sum(S.todas?.vendas||S.vendas,x=>x.kg) - sum(S.perdas||[],x=>x.kg);
 const saldoAtual = () => S.saldoInicial + sum(S.caixa,x=>x.tipo==='r'?x.valor:-x.valor) + sum(S.vendas,recV);
 const nfPend = () => S.vendas.filter(v=>v.comNota && !v.nf).length;
 function fluxo(meses=6){

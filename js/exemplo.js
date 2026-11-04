@@ -12,7 +12,7 @@ function exemplo(seed=11, defs=null, regime='funrural'){
     if (k<0.85) hist.push({id:uid(), data:`${cur}-08-${10+Math.floor(r()*15)}`, arv:k<0.45? a0-1-Math.floor(r()*5) : a0, motivo:k<0.45?(r()<0.6?'Mortalidade':'Árvore quebrada'):'Recontagem'});
     return {id:uid(), cod:'R-'+String(i+1).padStart(2,'0'), hist};
   })}));
-  const estrias=[], producao=[], vendas=[], caixa=[], comp=[], agg={};
+  const estrias=[], producao=[], perdas=[], vendas=[], caixa=[], comp=[], agg={};
   for (const y of [cur-1, cur]) {
     talhoes.forEach((t,i) => {
       const fim = y===cur ? (i===2 ? addD(T0,-18) : T0) : `${y+1}-08-31`;   // Talhão C com estria atrasada, para demonstrar o alerta
@@ -41,6 +41,9 @@ function exemplo(seed=11, defs=null, regime='funrural'){
     for (const [tid,kg] of Object.entries(a.kg)) { const v=Math.round(kg/10)*10; const t=talhoes.find(x=>x.id===tid);
       producao.push({id:uid(),data:dc,talhao:tid,ramais:t.ramais.map(x=>x.id),kg:v}); kgMes+=v; }
     estoque += kgMes;
+    /* perda de resina: um mês sim, outro não, uma pequena parte da coleta (chuva, saco rasgado, roubo) */
+    if (r()<0.5 && kgMes>200) { const [tid] = Object.keys(a.kg), kgP = Math.max(10, Math.round(kgMes*(0.01+r()*0.03)/5)*5);
+      perdas.push({id:uid(), data:dc, talhao:tid, kg:kgP, motivo:['Chuva','Saco rasgado','Roubo','Resina com sujeira'][Math.floor(r()*4)], obs:''}); estoque -= kgP; }
     const pd = (dia,cat,desc,v) => { const dt=`${k}-${dia}`; if (dt<=T0) caixa.push({id:uid(),data:dt,tipo:'d',cat,desc,valor:Math.round(v)}); };
     if (k.endsWith('-09')) pd('05','Arrendamento','Arrendamento da área',4500);
     pd('10','Pasta estimulante','Pasta estimulante',a.est*0.09);
@@ -72,7 +75,7 @@ function exemplo(seed=11, defs=null, regime='funrural'){
     if (i%2===1) pc('22','r','Venda de resina','Venda prevista (~2.500 kg, líquido)',2500*5.9*fator*sz);
   }
   return {demo:true, regime, saldoInicial:9000, ideal:14,
-    talhoes:talhoes.map(({res,...t})=>t), estrias, producao, vendas, caixa, comp, compradores:{}};
+    talhoes:talhoes.map(({res,...t})=>t), estrias, producao, perdas, vendas, caixa, comp, compradores:{}};
 }
 
 export { exemplo };

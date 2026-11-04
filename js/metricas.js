@@ -14,11 +14,11 @@ const TIQUE_MAX_MS = 60e3;        // um intervalo entre sinais nunca conta mais 
 /* catálogo completo: o painel cruza com ele para mostrar também o que teve zero uso */
 const CATALOGO = {
   eventos: ['app_open', 'login', 'logout', 'page_view', 'record_created', 'record_updated', 'record_deleted', 'feature_used', 'export'],
-  telas: ['fazendas', 'geral', 'conta', 'cadastros', 'senha', 'inicio', 'caixa:real', 'caixa:comp', 'floresta:ramais', 'floresta:apontar', 'floresta:estrias', 'producao', 'vendas', 'resultado'],
-  tabelas: ['perfis', 'propriedades', 'entidades_fiscais', 'contas_bancarias', 'fazendas', 'vinculos', 'talhoes', 'ramais', 'contagens', 'estrias', 'coletas',
+  telas: ['fazendas', 'fazenda', 'perdas', 'conta', 'cadastros', 'senha', 'inicio', 'caixa:contas', 'caixa:real', 'caixa:comp', 'floresta:ramais', 'floresta:apontar', 'floresta:estrias', 'producao', 'vendas', 'resultado'],
+  tabelas: ['perfis', 'entidades_fiscais', 'inscricoes_estaduais', 'contas_bancarias', 'fazendas', 'talhoes', 'ramais', 'contagens', 'estrias', 'coletas', 'perdas',
     'vendas', 'recebimentos', 'lancamentos', 'compromissos', 'compradores', 'rateios'],
   funcoes: ['dados_exemplo', 'regerar_exemplo', 'limpar_fazenda', 'compromisso_pago', 'regime_alterado', 'intervalo_alterado',
-    'funcao_ligada', 'funcao_desligada', 'safra_trocada', 'nfe_emitida', 'cnpj_consultado', 'sincronizar_manual', 'entidade_filtrada', 'mover_lote']
+    'funcao_ligada', 'funcao_desligada', 'safra_trocada', 'nfe_emitida', 'cnpj_consultado', 'sincronizar_manual', 'entidade_filtrada', 'fazenda_filtrada', 'mover_lote']
 };
 
 let M = null;          // {userId, arm, fila, sessoes, atual, tela, ultimaAtividade, ultimoTique}

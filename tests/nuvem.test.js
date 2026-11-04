@@ -219,16 +219,16 @@ test('conta suspensa: sessão e login viram a mensagem de conta suspensa', () =>
 
 test('tabela que ainda não existe no servidor é pulada: o resto sincroniza e a linha espera na fila', async () => {
   const L = novoL();
-  gravar(L, 'propriedades', { id: 'p1', nome: 'P', uf: 'PR' });
+  gravar(L, 'perdas', { id: 'p1', fazenda_id: 'f1', data: '2026-10-01', kg: 5 });
   gravar(L, 'fazendas', { id: 'f1', nome: 'F', ie: '12345678', uf: 'PR' });
-  const falta = { code: 'PGRST205', message: "Could not find the table 'public.propriedades'" };
-  const base = clienteFalso({ upsert: t => ({ error: t === 'propriedades' ? falta : null }), linhas: { talhoes: [{ id: 't1', updated_at: '2026-01-01T00:00:00Z', nome: 'T' }] } });
-  const c = { from: t => t === 'propriedades' ? { ...base.from(t), select: () => { const b = { or: () => b, gte: () => b, order: () => b, limit: async () => ({ data: null, error: falta }) }; return b; } } : base.from(t) };
+  const falta = { code: 'PGRST205', message: "Could not find the table 'public.perdas'" };
+  const base = clienteFalso({ upsert: t => ({ error: t === 'perdas' ? falta : null }), linhas: { talhoes: [{ id: 't1', updated_at: '2026-01-01T00:00:00Z', nome: 'T' }] } });
+  const c = { from: t => t === 'perdas' ? { ...base.from(t), select: () => { const b = { or: () => b, gte: () => b, order: () => b, limit: async () => ({ data: null, error: falta }) }; return b; } } : base.from(t) };
   const n = criarNuvem(c, L);
   const r = await n.sincronizar();
   assert.equal(r.ok, true);
-  assert.equal(pendentes(L), 1, 'a propriedade continua na fila');
+  assert.equal(pendentes(L), 1, 'a perda continua na fila');
   assert.ok(!ativas(L, 'fazendas').some(f => f._erro));
   assert.equal(ativas(L, 'talhoes').length, 1, 'a busca seguiu para as tabelas seguintes');
-  assert.deepEqual(r.faltam, ['propriedades'], 'avisa quais tabelas faltam (o app não monta o exemplo nem completa o cadastro)');
+  assert.deepEqual(r.faltam, ['perdas'], 'avisa quais tabelas faltam (o app não monta o exemplo nem completa o cadastro)');
 });

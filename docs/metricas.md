@@ -40,9 +40,9 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `feature_used` | usou uma função que não é só gravar | `funcao` (abaixo); `modulo` em `funcao_ligada`/`funcao_desligada` |
 | `export` | reservado: o app ainda não exporta nada | — |
 
-**Telas** (`tela` ou `tela:modo`): `fazendas` (escolha da propriedade), `geral`, `conta`, `cadastros` (propriedades e CPFs/CNPJs), `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
+**Telas** (`tela` ou `tela:modo`): `fazendas` (lista de fazendas), `fazenda` (cadastro de uma fazenda), `perdas`, `conta`, `cadastros` (CPFs, CNPJs e contas), `caixa:contas` (saldos das contas), `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
 
-**Tabelas** (`record_*`): `perfis`, `propriedades`, `entidades_fiscais`, `contas_bancarias`, `fazendas` (inscrições estaduais), `vinculos`, `talhoes`, `ramais`, `contagens`, `estrias`, `coletas`, `vendas`, `recebimentos`, `lancamentos`, `compromissos`, `compradores`, `rateios`.
+**Tabelas** (`record_*`): `perfis`, `entidades_fiscais`, `inscricoes_estaduais`, `contas_bancarias`, `fazendas`, `talhoes`, `ramais`, `contagens`, `estrias`, `coletas`, `perdas`, `vendas`, `recebimentos`, `lancamentos`, `compromissos`, `compradores`, `rateios`.
 
 **Funções** (`feature_used`):
 
@@ -59,8 +59,9 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `nfe_emitida` | emitiu a NF-e simulada |
 | `cnpj_consultado` | consultou o CNPJ do comprador |
 | `sincronizar_manual` | tocou no indicador de sincronização |
-| `entidade_filtrada` | escolheu um CPF/CNPJ (ou "Todos", com `todos: true`) no seletor do topo |
-| `mover_lote` | moveu registros em lote para outra propriedade, inscrição ou CPF/CNPJ (`tabela`, `qtd`) |
+| `entidade_filtrada` | escolheu um CPF/CNPJ (ou "Todos", com `todos: true`) no filtro do topo |
+| `fazenda_filtrada` | escolheu uma fazenda (ou todas, com `todos: true`) no filtro do topo |
+| `mover_lote` | moveu registros em lote para outro CPF/CNPJ ou outra fazenda (`tabela`, `qtd`) |
 
 Os dados de exemplo e a limpeza de fazenda **não** geram `record_*` (seriam centenas de registros que o produtor não digitou); geram só o `feature_used` correspondente.
 

@@ -10,90 +10,100 @@ const { V } = await import('../js/telas.js');
 const { gravarLote } = await import('../js/local.js');
 const { linha } = await import('../js/mapa.js');
 const { cpfValido, cnpjValido } = await import('../js/doc.js');
+const { usarDados, saldoAtual } = await import('../js/regras.js');
 
-test('cadastro completado: fazenda antiga ganha propriedade, CPF padrão e vínculo', () => {
+test('cadastro completado: quem não tem CPF/CNPJ nem conta ganha os dois; rodar de novo não cria nada', () => {
   est.abrirSessao('u-antigo', { email: 'antigo@x.com', nome: 'Maria' });
-  const F = '00000000-0000-4000-8000-0000000000a1';
-  gravarLote(est.SES.L, [['fazendas', linha.fazenda({ id: F, nome: 'Sítio', ie: '11122233', municipio: 'Lapa', uf: 'PR' }, { regime: 'funrural' })]]);
   est.recarregar();
-  assert.equal(est.usuario().propriedades[0].virtual, true);
   est.completarCadastro();
   const u = est.usuario();
   assert.equal(u.entidades.length, 1);
-  assert.equal(u.entidades[0].padrao, true);
+  assert.ok(u.entidades[0].padrao);
   assert.equal(u.entidades[0].nome, 'Maria');
-  assert.equal(u.propriedades.length, 1);
-  assert.ok(!u.propriedades[0].virtual);
-  assert.equal(u.fazendas[0].propriedade_id, u.propriedades[0].id);
-  assert.equal(u.fazendas[0].vinculos[0].entidade, u.entidades[0].id);
-  /* rodar de novo não cria nada */
+  assert.equal(u.entidades[0].contas[0].apelido, 'Conta principal');
   const n = est.SES.L.fila.length;
   est.completarCadastro();
   assert.equal(est.SES.L.fila.length, n);
 });
 
-test('conta de exemplo: 2 propriedades, 1 CPF e 1 CNPJ, lançamentos dos dois', () => {
+/* como a migração deixa a conta de exemplo: CPF padrão sem documento, com as IEs das fazendas antigas e a conta principal */
+const CPF0 = '00000000-0000-4000-8000-00000000e000';
+test('conta de exemplo: 2 fazendas, 1 CPF e 1 CNPJ com inscrições e contas; vendas e despesas dos dois', () => {
   est.abrirSessao('u-exemplo', { email: est.EX.email, nome: 'Produtor' });
-  /* como o servidor deixa a conta: o CPF padrão criado no cadastro, ainda sem documento */
-  gravarLote(est.SES.L, [['entidades_fiscais', linha.entidade({ id: '00000000-0000-4000-8000-00000000e000', tipo: 'PF', nome: 'Produtor', cor: '#2f6b4f', regime: 'PF_ATIVIDADE_RURAL', padrao: true })]]);
+  gravarLote(est.SES.L, [
+    ['entidades_fiscais', linha.entidade({ id: CPF0, tipo: 'PF', nome: 'Produtor', cor: '#2f6b4f', regime: 'PF_ATIVIDADE_RURAL', padrao: true })],
+    ['inscricoes_estaduais', linha.inscricao({ id: 'ie-velha', entidade: CPF0, ie: '9012345678', uf: 'PR' })],
+    ['contas_bancarias', linha.conta({ id: 'cp', entidade: CPF0, apelido: 'Conta principal', saldoInicial: 18000 })]]);
   est.recarregar();
   est.prepararExemplo();
   const u = est.usuario();
-  assert.equal(u.propriedades.length, 2);
-  assert.ok(u.propriedades.every(p => !p.virtual && p.area_ha > 0 && p.nirf_cib && p.car));
+  assert.equal(u.fazendas.length, 2);
+  assert.ok(u.fazendas.every(f => f.area_ha > 0 && f.nirf_cib && f.car));
   assert.equal(u.entidades.length, 2, 'reaproveita o CPF criado no cadastro');
   const cpf = u.entidades.find(e => e.tipo === 'PF'), cnpj = u.entidades.find(e => e.tipo === 'PJ');
-  assert.equal(cpf.id, '00000000-0000-4000-8000-00000000e000');
+  assert.equal(cpf.id, CPF0);
   assert.ok(cpfValido(cpf.documento) && cnpjValido(cnpj.documento));
   assert.ok(cpf.padrao && !cnpj.padrao);
-  const sc = u.propriedades.find(p => p.uf === 'SC'), pr = u.propriedades.find(p => p.uf === 'PR');
-  assert.deepEqual(sc.fazendas[0].vinculos.map(v => [v.entidade, v.percentual, v.padrao]), [[cpf.id, 70, true], [cnpj.id, 30, false]]);
-  assert.deepEqual(pr.fazendas[0].vinculos.map(v => [v.entidade, v.padrao]), [[cnpj.id, true]]);
-  const vSC = sc.dados.todas.vendas;
-  assert.ok(vSC.some(v => v.entidade === cpf.id) && vSC.some(v => v.entidade === cnpj.id), 'Capão Alto vende pelos dois');
-  assert.ok(sc.dados.todas.caixa.some(x => x.entidade === cnpj.id));
-  assert.ok(pr.dados.todas.vendas.every(v => v.entidade === cnpj.id), 'Boa Esperança fatura só pelo CNPJ');
+  assert.deepEqual(cnpj.inscricoes.map(i => i.uf).sort(), ['PR', 'SC']);
+  assert.ok(cnpj.inscricoes.some(i => i.id === 'ie-velha'), 'a IE que a migração deu ao CPF passou para o CNPJ (a IE é única)');
+  assert.equal(sum(u.entidades.flatMap(e => e.contas), c => c.saldoInicial), 18000, 'conta principal zerada; o saldo está nas contas do exemplo');
+  const sc = u.fazendas.find(f => f.uf === 'SC'), pr = u.fazendas.find(f => f.uf === 'PR');
+  const dSC = est.dadosFazenda(sc.id), dPR = est.dadosFazenda(pr.id);
+  assert.ok(dSC.vendas.some(v => v.entidade === cpf.id) && dSC.vendas.some(v => v.entidade === cnpj.id), 'Capão Alto vende pelos dois');
+  assert.ok(dSC.vendas.every(v => v.inscricao && [...cpf.inscricoes, ...cnpj.inscricoes].find(i => i.id === v.inscricao).uf === 'SC'), 'a nota sai pela IE de SC');
+  assert.ok(dPR.vendas.every(v => v.entidade === cnpj.id));
+  assert.ok(dSC.vendas.flatMap(v => v.recs).every(r => r.conta), 'recebimentos na conta de quem vendeu');
+  assert.ok(dSC.perdas.length > 0, 'tem perdas de resina');
+  assert.ok(u.global.caixa.some(x => !x.fazenda && x.entidade === cnpj.id), 'despesa geral (contador) do CNPJ, sem fazenda');
   /* entrar de novo não remonta (só regera depois de 7 dias) */
   const n = est.SES.L.fila.length;
   est.prepararExemplo();
   assert.equal(est.SES.L.fila.length, n);
 });
 
-test('regerar o exemplo mantém a divisão entre CPF e CNPJ', () => {
+test('regerar o exemplo mantém a divisão entre CPF e CNPJ e não duplica o contador', () => {
   const u = est.usuario(), f = u.fazendas.find(x => x.uf === 'SC'), cnpj = u.entidades.find(e => e.tipo === 'PJ');
+  const contador = () => est.usuario().global.caixa.filter(x => x.desc === 'Honorários do contador (exemplo)').length;
+  const n = contador();
   est.regerarExemplo(f);
-  const sc = est.usuario().propriedades.find(p => p.uf === 'SC');
-  assert.ok(sc.dados.todas.vendas.some(v => v.entidade === cnpj.id));
+  assert.ok(est.dadosFazenda(f.id).vendas.some(v => v.entidade === cnpj.id));
+  assert.equal(contador(), n);
 });
 
-test('telas: seletor de CPF/CNPJ filtra o financeiro e "Faturado por" vem com o padrão', () => {
-  const u = est.usuario(), sc = u.propriedades.find(p => p.uf === 'SC'), cnpj = u.entidades.find(e => e.tipo === 'PJ');
-  est.usarPropriedadeId(sc.id);
-  est.E.modoCaixa = 'real';
+test('telas: filtros do topo, emitente marcado e saldo das contas', () => {
+  const u = est.usuario(), cnpj = u.entidades.find(e => e.tipo === 'PJ');
+  est.E.atual = 'caixa'; est.E.modoCaixa = 'real'; est.recarregar();
   const html = V.caixa();
-  assert.match(html, /Faturado por/);
-  const marcado = html.match(/name="fat" value="([^"]+)" checked/)[1];
-  assert.equal(marcado.split('|')[1], u.entidades.find(e => e.padrao).id);
-  const total = sum(est.propAtual().dados.vendas, v => v.kg);
-  est.definirEntidade(cnpj.id);
-  assert.ok(sum(est.propAtual().dados.vendas, v => v.kg) < total);
-  assert.equal(est.usuario().entidadeSel, cnpj.id);
+  assert.match(html, /Em nome de/);
+  assert.match(html, /Geral \(sem fazenda\)/);
+  assert.equal(html.match(/name="ent" value="([^"]+)" checked/)[1], u.entidades.find(e => e.padrao).id);
+  est.definirFiltro('entidade', cnpj.id);
+  assert.equal(V.caixa().match(/name="ent" value="([^"]+)" checked/)[1], cnpj.id, 'com o CNPJ no filtro, ele vem marcado');
   assert.equal(est.SES.L.meta.entidade, cnpj.id, 'a escolha fica guardada no cache do usuário');
-  /* com o CNPJ escolhido no topo, ele vem marcado em "Faturado por" */
-  assert.equal(V.caixa().match(/name="fat" value="([^"]+)" checked/)[1].split('|')[1], cnpj.id);
-  est.definirEntidade(null);
-  assert.equal(sum(est.propAtual().dados.vendas, v => v.kg), total);
+  est.E.modoCaixa = 'contas';
+  const contas = V.caixa();
+  assert.match(contas, /Conta da empresa/);
+  assert.ok(!/Conta da safra/.test(contas), 'com o filtro, só as contas do CNPJ');
+  est.definirFiltro('entidade', null);
+  est.E.atual = 'vendas'; est.recarregar();
+  const vendas = V.vendas();
+  assert.match(vendas, /Quem emite a nota/);
+  assert.match(vendas, /Fazenda de onde saiu a resina/);
+  assert.match(vendas, /Inscrição estadual de quem emite/);
 });
 
-test('telas: cadastros mostram propriedades, inscrições, vínculos e o aviso de soma acima de 100%', () => {
+test('telas: cadastros financeiros e declarações em desenvolvimento; perdas e cadastro da fazenda', () => {
   const html = V.cadastros();
-  assert.match(html, /CPFs e CNPJs/);
   assert.match(html, /529\.982\.247-25/);
   assert.match(html, /11\.222\.333\/0001-81/);
-  assert.match(html, /IE 254123987/);
-  assert.ok(!/passa de 100%/.test(html));
-  const f = est.usuario().fazendas.find(x => x.uf === 'SC');
-  gravarLote(est.SES.L, [['vinculos', { id: f.vinculos[1].id, percentual: 50 }]]);
-  est.recarregar();
-  assert.match(V.cadastros(), /passa de 100% \(120,00%\)/);
+  assert.match(html, /Declarações de Imposto de Renda/);
+  assert.match(html, /será disponibilizado em futuras versões/);
+  const sc = est.usuario().fazendas.find(f => f.uf === 'SC');
+  est.abrirFazenda(sc.id); est.E.atual = 'perdas'; est.recarregar();
+  assert.match(V.perdas(), /Resina perdida na safra/);
+  est.E.atual = 'fazenda'; est.recarregar();
+  assert.match(V.fazenda(), /NIRF \/ CIB/);
+  assert.ok(!/Inscrição Estadual \(ICMS\)/.test(V.fazenda()), 'a fazenda não tem mais IE');
+  est.E.atual = 'inicio'; est.recarregar();
+  assert.match(V.inicio(), /Geral \(sem fazenda\)/, 'o comparativo do Início mostra as despesas gerais');
 });
