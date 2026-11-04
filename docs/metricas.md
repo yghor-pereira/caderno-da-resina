@@ -40,9 +40,9 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `feature_used` | usou uma função que não é só gravar | `funcao` (abaixo); `modulo` em `funcao_ligada`/`funcao_desligada` |
 | `export` | reservado: o app ainda não exporta nada | — |
 
-**Telas** (`tela` ou `tela:modo`): `fazendas`, `geral`, `conta`, `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
+**Telas** (`tela` ou `tela:modo`): `fazendas` (escolha da propriedade), `geral`, `conta`, `cadastros` (propriedades e CPFs/CNPJs), `senha` (troca obrigatória depois de senha temporária), `inicio`, `caixa:real`, `caixa:comp`, `floresta:ramais`, `floresta:apontar`, `floresta:estrias`, `producao`, `vendas`, `resultado`.
 
-**Tabelas** (`record_*`): `perfis`, `fazendas`, `talhoes`, `ramais`, `contagens`, `estrias`, `coletas`, `vendas`, `recebimentos`, `lancamentos`, `compromissos`, `compradores`.
+**Tabelas** (`record_*`): `perfis`, `propriedades`, `entidades_fiscais`, `contas_bancarias`, `fazendas` (inscrições estaduais), `vinculos`, `talhoes`, `ramais`, `contagens`, `estrias`, `coletas`, `vendas`, `recebimentos`, `lancamentos`, `compromissos`, `compradores`, `rateios`.
 
 **Funções** (`feature_used`):
 
@@ -59,6 +59,8 @@ Texto livre e números com casas decimais são descartados, então um valor em r
 | `nfe_emitida` | emitiu a NF-e simulada |
 | `cnpj_consultado` | consultou o CNPJ do comprador |
 | `sincronizar_manual` | tocou no indicador de sincronização |
+| `entidade_filtrada` | escolheu um CPF/CNPJ (ou "Todos", com `todos: true`) no seletor do topo |
+| `mover_lote` | moveu registros em lote para outra propriedade, inscrição ou CPF/CNPJ (`tabela`, `qtd`) |
 
 Os dados de exemplo e a limpeza de fazenda **não** geram `record_*` (seriam centenas de registros que o produtor não digitou); geram só o `feature_used` correspondente.
 

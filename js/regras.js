@@ -11,8 +11,16 @@ const DICAS = [
   {m:'EPI', t:'Pasta ácida exige proteção', s:'Use luvas e óculos ao aplicar estimulante. Guarde o produto longe de crianças e animais.'}
 ];
 const SAFRA = [1,.95,.8,.55,.3,.15,.12,.2,.45,.7,.9,1];   // jan→dez
-const CATS_D = ['Mão de obra','Pasta estimulante','Sacos e materiais','Combustível/frete','Arrendamento','Outros'];
+const CATS_D = ['Mão de obra','Pasta estimulante','Sacos e materiais','Combustível/frete','Arrendamento','Máquinas e benfeitorias','Despesas pessoais','Outros'];
 const CATS_R = ['Venda de resina','Outras receitas'];
+/* ---------- livro caixa: categoria no IR, documentos e quem fatura ---------- */
+const CAT_IR = {RECEITA_RURAL:'Receita da atividade rural', CUSTEIO:'Custeio', INVESTIMENTO:'Investimento', NAO_DEDUTIVEL:'Não dedutível'};
+/* categoria do IR sugerida pela categoria do lançamento (o produtor pode trocar) */
+const catIrDe = x => x.tipo==='r' ? 'RECEITA_RURAL' : x.cat==='Máquinas e benfeitorias' ? 'INVESTIMENTO' : x.cat==='Despesas pessoais' ? 'NAO_DEDUTIVEL' : 'CUSTEIO';
+const TIPOS_DOC = {NF:'Nota fiscal', NFP:'Nota do produtor', FATURA:'Fatura', RECIBO:'Recibo', CONTRATO:'Contrato', FOLHA:'Folha de pagamento', OUTROS:'Outros'};
+const CONDICOES = {PROPRIETARIO:'Proprietário', ARRENDATARIO:'Arrendatário', PARCEIRO:'Parceiro', COMODATARIO:'Comodatário', CONDOMINIO:'Condomínio'};
+const REGIMES_TRIB = {PF_ATIVIDADE_RURAL:'Pessoa física (atividade rural)', SIMPLES:'Simples Nacional', PRESUMIDO:'Lucro presumido', REAL:'Lucro real'};
+const CORES_ENT = ['#2f6b4f','#b5722d','#3b6ea8','#8a4f9e','#a8443b','#5f7a2b'];
 /* atraso de estria (dias além do intervalo ideal) que deixa alertas, cartões e gráfico em vermelho */
 const ATRASO_CRITICO = 4;
 const FORMAS = ['Pix','Transferência','Boleto','Dinheiro','Cheque'];
@@ -64,7 +72,8 @@ function tot(y){
     lucro:receita-desp, kgPainel:pain?kgProd/pain:0, kgEstria:nEst?kgProd/nEst:0, estDia:dias?nEst/dias:0,
     custoKg:kgProd?desp/kgProd:0, precoMedio:kgVend?vendido/kgVend:0, precoLivre:kgVend?liquido/kgVend:0, custoPainel:pain?desp/pain:0};
 }
-const estoque = () => sum(S.producao,x=>x.kg) - sum(S.vendas,x=>x.kg);
+/* o estoque é da propriedade: não depende de quem faturou (usa todas as vendas, mesmo com filtro de CPF/CNPJ) */
+const estoque = () => sum(S.producao,x=>x.kg) - sum(S.todas?.vendas||S.vendas,x=>x.kg);
 const saldoAtual = () => S.saldoInicial + sum(S.caixa,x=>x.tipo==='r'?x.valor:-x.valor) + sum(S.vendas,recV);
 const nfPend = () => S.vendas.filter(v=>v.comNota && !v.nf).length;
 function fluxo(meses=6){
@@ -107,4 +116,4 @@ function statusTalhoes(){
   });
 }
 
-export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, abaixoDoRecebido, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };
+export { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, CAT_IR, catIrDe, TIPOS_DOC, CONDICOES, REGIMES_TRIB, CORES_ENT, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, abaixoDoRecebido, arv, contData, painT, talByNome, talById, ramsDe, S, usarDados, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, kgRamal, ramStats, statusTalhoes };

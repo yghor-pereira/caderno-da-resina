@@ -1,8 +1,9 @@
 import { brl, num, plural, esc, hoje, addD, diff, fdata, MES_SAFRA, safraIni, safraLbl, mIdx, sum } from './util.js';
-import { MERCADO, DICAS, SAFRA, CATS_D, CATS_R, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
+import { CAT_IR, catIrDe, TIPOS_DOC, CONDICOES, REGIMES_TRIB, CORES_ENT, MERCADO, DICAS, SAFRA, CATS_D, CATS_R, ATRASO_CRITICO, FORMAS, totalV, recV, saldoV, statusRec, chave, CORES, REG, fat, liqV, livreV, livre, pctRec, arv, painT, talById, ramsDe, S, dados, comFazenda, inSafra, totPaineis, tot, estoque, saldoAtual, nfPend, fluxo, ramStats, statusTalhoes } from './regras.js';
 import { chart, legend, delta } from './graficos.js';
 import { UFS } from './nfe.js';
-import { MODS, MOD_PADRAO, usuario, fazAtual, mod, CUR, E, EX, SES, nPendentes, listaErros } from './estado.js';
+import { MODS, MOD_PADRAO, usuario, propAtual, mod, CUR, E, EX, SES, nPendentes, listaErros, nomeEnt, opcoesFat, valorFat, fatPadrao, lerFat } from './estado.js';
+import { mascaraDoc } from './doc.js';
 
 const safras = () => [...new Set([CUR, ...S.producao.map(p=>safraIni(p.data)), ...S.estrias.map(e=>safraIni(e.data))])].sort();
 const chipsSafra = () => `<div class="chips">${safras().map(y=>`<button type="button" data-safra="${y}" aria-pressed="${y===E.safraSel}">Safra ${safraLbl(y)}</button>`).join('')}</div>`;
@@ -11,9 +12,61 @@ const acoes = (tab, id, {editar=false, aviso=''}={}) => E.confirmar===tab+':'+id
   ? `${aviso?`<span class="down">${aviso}</span> `:''}<button type="button" class="lnk perigo" data-excluir="${tab}:${id}" data-ok="1">confirmar exclusão</button> · <button type="button" class="lnk" data-excluir="">cancelar</button>`
   : `${editar?`<button type="button" class="lnk" data-editar="${tab}:${id}">editar</button> · `:''}<button type="button" class="lnk" data-excluir="${tab}:${id}">excluir</button>`;
 const editando = (tab, id) => E.editar===tab+':'+id;
-const NOMES_TAB = {fazendas:'Fazenda', talhoes:'Talhão', ramais:'Ramal', contagens:'Contagem', estrias:'Estria', coletas:'Coleta', vendas:'Venda',
+const NOMES_TAB = {propriedades:'Propriedade', entidades_fiscais:'CPF/CNPJ', vinculos:'Vínculo', contas_bancarias:'Conta bancária', rateios:'Rateio', fazendas:'Inscrição', talhoes:'Talhão', ramais:'Ramal', contagens:'Contagem', estrias:'Estria', coletas:'Coleta', vendas:'Venda',
   recebimentos:'Recebimento', lancamentos:'Lançamento', compromissos:'Compromisso', compradores:'Comprador', perfis:'Perfil'};
 const optTalhoes = sel => S.talhoes.map(t=>`<option ${t.nome===sel?'selected':''}>${esc(t.nome)}</option>`).join('');
+
+/* ---------- CPFs/CNPJs: marca colorida, "Faturado por" e dados do documento ---------- */
+const entPor = id => usuario()?.entidades.find(e=>e.id===id) || null;
+const chipEnt = e => `<span class="ent" style="--c:${esc(e?.cor||'var(--muted)')}">${esc(nomeEnt(e))}</span>`;
+const variasEnt = () => (usuario()?.entidades.length||0) > 1;
+const docTxt = e => e?.documento ? mascaraDoc(e.documento) : '';
+const iesTxt = p => p.fazendas.length===1 ? 'IE '+esc(p.fazendas[0].ie) : plural(p.fazendas.length,'inscrição','inscrições');
+/* nome da opção: com mais de uma inscrição aparece a IE; entre propriedades, o nome dela também */
+function lblFat(o, {ie=false, prop=false}={}){ return nomeEnt(o.ent) + (ie ? ' · IE '+o.faz.ie : '') + (prop ? ' · '+o.prop.nome : ''); }
+/* "Faturado por": vem marcado com o padrão e troca com um toque */
+function fatHtml(name, prop, sel){
+  const ops = opcoesFat(prop);
+  if (sel && !ops.some(o=>valorFat(o)===sel)) {   // faturado por CPF/CNPJ inativo ou desvinculado: continua como opção
+    const {fazenda, entidade} = lerFat(sel), f = prop?.fazendas.find(x=>x.id===fazenda);
+    if (f) ops.push({prop, faz:f, ent:entPor(entidade), padrao:false});
+  }
+  if (!ops.length) return '';
+  const marcado = sel || valorFat(fatPadrao(prop) || ops[0]), ie = prop.fazendas.length>1;
+  return `<fieldset class="full fat"><legend>Faturado por</legend><div class="chips">${ops.map(o=>`<label class="opc"><input type="radio" name="${name}" value="${valorFat(o)}" ${valorFat(o)===marcado?'checked':''} required>${chipEnt({...o.ent, apelido:lblFat(o,{ie}), cor:o.ent?.cor})}</label>`).join('')}</div></fieldset>`;
+}
+const contasTodas = () => (usuario()?.entidades||[]).flatMap(e=>e.contas.map(c=>({...c, e})));
+const lblConta = c => [c.banco, c.apelido, c.agencia&&'ag '+c.agencia, c.conta&&'cc '+c.conta].filter(Boolean).join(' · ') + (variasEnt() ? ' ('+nomeEnt(c.e)+')' : '');
+/* documento, contraparte, competência, categoria no IR e conta: escondidos, para não pesar no campo */
+function docCampos(x={}, tipo='d'){
+  const auto = catIrDe({tipo, cat:x.cat}), contas = contasTodas(), comp = x.competencia && x.competencia!==x.data ? x.competencia : '';
+  const aberto = x.tipoDoc || x.numDoc || x.contraparteNome || x.contraparteDoc || comp;
+  return `<details class="mais full" ${aberto?'open':''}><summary>Documento, contraparte e IR</summary><div class="campos">
+    <label>Competência<input name="comp" type="date" value="${comp}"><small class="note">Vazio = a data do pagamento</small></label>
+    <label>Categoria no IR<select name="catir"><option value="">Automática</option>${Object.entries(CAT_IR).map(([k,n])=>`<option value="${k}" ${x.catIr && x.catIr!==auto && x.catIr===k?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label>Tipo de documento<select name="tdoc"><option value="">—</option>${Object.entries(TIPOS_DOC).map(([k,n])=>`<option value="${k}" ${x.tipoDoc===k?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label>Número<input name="ndoc" value="${esc(x.numDoc||'')}"></label>
+    <label>${tipo==='r'?'Quem pagou':'Quem recebeu (fornecedor)'}<input name="cnome" value="${esc(x.contraparteNome||'')}"></label>
+    <label>CPF/CNPJ dele<input name="cdoc" inputmode="numeric" data-mask="doc" value="${esc(x.contraparteDoc?mascaraDoc(x.contraparteDoc):'')}"></label>
+    ${contas.length?`<label class="full">Conta bancária<select name="conta"><option value="">—</option>${contas.map(c=>`<option value="${c.id}" ${x.conta===c.id?'selected':''}>${esc(lblConta(c))}</option>`).join('')}</select></label>`:''}
+  </div></details>`;
+}
+/* conta do recebimento: sugere a primeira conta de quem faturou a venda */
+function contaSel(v){
+  const cs = contasTodas(); if (!cs.length) return '';
+  const sug = cs.find(c=>c.e.id===v.entidade)?.id;
+  return `<label class="full">Conta bancária<select name="conta"><option value="">—</option>${cs.map(c=>`<option value="${c.id}" ${c.id===sug?'selected':''}>${esc(lblConta(c))}</option>`).join('')}</select></label>`;
+}
+/* ---------- mover em lote para outra propriedade, inscrição ou CPF/CNPJ ---------- */
+const destinos = () => opcoesFat((usuario()?.propriedades||[]).filter(p=>p.fazendas.length));
+const podeMover = () => destinos().length > 1;
+const selBtn = tab => podeMover() && E.sel?.tab!==tab ? `<button type="button" class="lnk" data-sel="${tab}">Selecionar para mover</button>` : '';
+const selBar = tab => `<form id="fMover" class="selbar" data-tab="${tab}">
+  <span class="full"><b id="selN">${plural(E.sel.ids.size,'selecionado','selecionados')}</b> · <button type="button" class="lnk" data-selall="1">todos</button> · <button type="button" class="lnk" data-selall="0">nenhum</button></span>
+  <label class="full">Mover para<select name="dest" required>${destinos().map(o=>`<option value="${valorFat(o)}">${esc(lblFat(o,{ie:true, prop:usuario().propriedades.length>1}))}</option>`).join('')}</select></label>
+  <button class="btn sm">Mover</button><button type="button" class="btn sm ghost" data-sel="">Cancelar</button>
+  <p class="err full" hidden></p></form>`;
+const rowSel = (id, t, a, sub) => `<label class="ram rsel"><input type="checkbox" name="selid" value="${id}" ${E.sel.ids.has(id)?'checked':''}><span><b>${t}</b> · ${a}<small>${sub}</small></span></label>`;
 
 /* ---------- telas ---------- */
 const V = {
@@ -56,23 +109,25 @@ senha(){
 },
 
 fazendas(){
-  const u=usuario(), fs=u.fazendas;
+  const u=usuario(), ps=u.propriedades.filter(p=>p.fazendas.length);
+  const ents = p => [...new Set(p.fazendas.flatMap(f=>f.vinculos.map(v=>v.entidade)))].map(entPor).filter(Boolean);
   return `
   <section class="sec">
-    <h2>Olá, ${esc(u.nome.split(' ')[0])}. Qual fazenda?</h2>
-    ${fs.length?`<div class="fzs">
-      ${fs.length>1?`<button type="button" class="card fz geral" data-faz="todas"><b>Visão geral</b><span class="note">As ${fs.length} fazendas consolidadas</span></button>`:''}
-      ${fs.map(f=>`<button type="button" class="card fz" data-faz="${f.id}"><b>${esc(f.nome)}</b>${f._erro?`<span class="err">${esc(f._erro)}</span>`:''}<span class="note">IE ${esc(f.ie)} · ${esc(f.municipio)}/${esc(f.uf)}</span><span class="note">${plural(f.dados.talhoes.length,'talhão','talhões')} · ${plural(sum(f.dados.talhoes,painT),'árvore','árvores')}</span></button>`).join('')}
-    </div>`:'<p class="note">Cadastre sua primeira fazenda para começar. Cada fazenda corresponde a uma Inscrição Estadual.</p>'}
+    <h2>Olá, ${esc(u.nome.split(' ')[0])}. Qual propriedade?</h2>
+    ${ps.length?`<div class="fzs">
+      ${ps.length>1?`<button type="button" class="card fz geral" data-faz="todas"><b>Visão geral</b><span class="note">As ${ps.length} propriedades consolidadas</span></button>`:''}
+      ${ps.map(p=>`<button type="button" class="card fz" data-faz="${p.id}"><b>${esc(p.nome)}</b>${p.fazendas.filter(f=>f._erro).map(f=>`<span class="err">${esc(f._erro)}</span>`).join('')}<span class="note">${iesTxt(p)} · ${esc(p.municipio)}/${esc(p.uf)}</span><span class="note">${plural(p.dados.talhoes.length,'talhão','talhões')} · ${plural(sum(p.dados.talhoes,painT),'árvore','árvores')}</span>${variasEnt()?`<span class="note ents">${ents(p).map(chipEnt).join('')}</span>`:''}</button>`).join('')}
+    </div>`:'<p class="note">Cadastre sua primeira propriedade para começar. Cada propriedade tem uma ou mais Inscrições Estaduais.</p>'}
+    <button type="button" class="lnk" data-ir="cadastros" style="align-self:flex-start">Minhas propriedades e CPFs/CNPJs</button>
   </section>
-  <section class="card sec">${fazForm(null)}</section>`;
+  <section class="card sec">${propForm()}</section>`;
 },
 
 conta(){
-  const u=usuario(), fe=u.fazendas.find(f=>f.id===E.fazEdit), erros=listaErros();
+  const u=usuario(), erros=listaErros();
   return `
   <section class="sec">
-    <div class="sec-h"><h2>Minha conta</h2><div class="hbtn">${E.admin?'<a class="btn sm ghost" href="admin.html">Área administrativa</a>':''}${SES.fid?'':'<button type="button" class="btn sm ghost" data-ir="fazendas">Minhas fazendas</button>'}</div></div>
+    <div class="sec-h"><h2>Minha conta</h2><div class="hbtn">${E.admin?'<a class="btn sm ghost" href="admin.html">Área administrativa</a>':''}${SES.pid?'':'<button type="button" class="btn sm ghost" data-ir="fazendas">Minhas propriedades</button>'}</div></div>
     <div class="card sec"><form id="fUser">
       <label>Nome<input id="uNome" value="${esc(u.nome)}" required></label>
       <label>E-mail<input value="${esc(u.email)}" disabled></label>
@@ -85,21 +140,13 @@ conta(){
     <div class="mods">${modsHtml(u.modulos)}</div>
   </section>
   <section class="card sec">
-    <h3>Minhas fazendas</h3>
-    <div class="list">${u.fazendas.map(f=>`<div class="row"><span class="t">${esc(f.nome)}${f.id===SES.fid?'<span class="pill ok">aberta</span>':''}</span><span class="a"><button type="button" class="lnk" data-editfaz="${f.id}">Editar</button></span>
-      <span class="s">IE ${esc(f.ie)} · ${esc(f.municipio)}/${esc(f.uf)} · ${REG[f.dados.regime||'funrural'].nome}${f._erro?` · <span class="down">${esc(f._erro)}</span>`:''}</span></div>`).join('')||'<p class="note">Nenhuma fazenda cadastrada.</p>'}</div>
-  </section>
-  <section class="card sec">
-    ${fazForm(fe)}
-    ${fe?`<div class="box"><h3>Apagar registros</h3><span class="note">Remove talhões, operações, vendas e lançamentos de ${esc(fe.nome)}. O cadastro da fazenda continua.</span>
-      ${E.limparPend===fe.id?`<div class="hbtn"><button type="button" class="btn sm" style="background:var(--bad)" data-limpafaz="${fe.id}" data-ok="1">Confirmar: apagar tudo</button><button type="button" class="btn sm ghost" data-limpafaz="">Cancelar</button></div>`
-      :`<button type="button" class="btn sm ghost" data-limpafaz="${fe.id}" style="align-self:flex-start">Apagar registros desta fazenda</button>`}</div>`:''}
-    ${fe?.demo?`<div class="box"><h3>Dados de exemplo</h3><span class="note">Gerados em ${fe.demo_gerado_em?fdata(fe.demo_gerado_em):'—'}. Regerar troca todos os registros desta fazenda por exemplos novos, com datas a partir de hoje.</span>
-      <button type="button" class="btn sm ghost" data-regerar="${fe.id}" style="align-self:flex-start">Regerar dados de exemplo</button></div>`:''}
+    <h3>Propriedades e CPFs/CNPJs</h3>
+    <p class="note">${plural(u.propriedades.length,'propriedade','propriedades')} · ${plural(u.fazendas.length,'inscrição estadual','inscrições estaduais')} · ${plural(u.entidades.length,'CPF/CNPJ','CPFs/CNPJs')}</p>
+    <button type="button" class="btn sm ghost" data-ir="cadastros" style="align-self:flex-start">Minhas propriedades e CPFs/CNPJs</button>
   </section>
   ${erros.length?`<section class="card sec" id="erros">
     <h3>Alterações que não foram salvas na nuvem</h3>
-    <p class="note">Corrija o registro (por exemplo, a Inscrição Estadual) e salve de novo; ele volta para a fila de envio.</p>
+    <p class="note">Corrija o registro (por exemplo, a Inscrição Estadual ou o CPF/CNPJ) e salve de novo; ele volta para a fila de envio.</p>
     <div class="list">${erros.map(({tabela,linha:l})=>`<div class="row"><span class="t">${NOMES_TAB[tabela]||tabela}${l.nome?' · '+esc(l.nome):''}</span><span class="s down">${esc(l._erro)}</span></div>`).join('')}</div>
   </section>`:''}
   ${E.sairPend?`<div class="box"><h3>Sair da conta</h3><span class="note">Há ${nPendentes()} alteraç${nPendentes()>1?'ões':'ão'} ainda não enviada${nPendentes()>1?'s':''}. Ela${nPendentes()>1?'s':''} fica${nPendentes()>1?'m':''} guardada${nPendentes()>1?'s':''} neste aparelho e ${nPendentes()>1?'são enviadas':'é enviada'} quando você entrar de novo. Sair mesmo assim?</span>
@@ -109,13 +156,14 @@ conta(){
 
 geral(){
   const u=usuario();
-  const rows=u.fazendas.map(f=>comFazenda(f.dados,()=>{ const st=statusTalhoes();
+  const rows=u.propriedades.filter(p=>p.dados).map(f=>comFazenda(f.dados,()=>{ const st=statusTalhoes();
     return {f, T:tot(CUR), saldo:saldoAtual(), aRec:sum(S.vendas,saldoV), arv:totPaineis(), atras:sum(st,s=>s.atrasados.length), fx:fluxo(6), nfp:nfPend()}; }));
   const t=k=>sum(rows,k), kg=t(r=>r.T.kgProd), arvs=t(r=>r.arv), kgV=t(r=>r.T.kgVend), liq=t(r=>r.T.liquido), lucro=t(r=>r.T.lucro), saldo=t(r=>r.saldo), aRec=t(r=>r.aRec);
   const labels=rows[0]?.fx.map(m=>m.lbl)||[], cor=i=>CORES[(i+1)%CORES.length];
   return `
   <section class="sec">
-    <h2>Safra ${safraLbl(CUR)} · todas as fazendas</h2>
+    <h2>Safra ${safraLbl(CUR)} · todas as propriedades</h2>
+    ${u.entidadeSel?`<p class="note">Financeiro de ${chipEnt(entPor(u.entidadeSel))}. Produção de todas as propriedades.</p>`:''}
     <div class="kpis">
       <div class="card kpi"><div class="l">Produzido</div><div class="v">${num(kg)} <small>kg</small></div></div>
       <div class="card kpi"><div class="l">Produtividade média</div><div class="v">${num(arvs?kg/arvs:0,2)} <small>kg/árvore</small></div></div>
@@ -127,18 +175,18 @@ geral(){
   </section>
   ${rows.length?`<section class="card sec">
     <h3>Saldo projetado (6 meses)</h3>
-    ${chart({title:'Saldo projetado por fazenda',labels,lines:[...rows.map((r,i)=>({vals:r.fx.map(x=>x.saldo),color:cor(i),dash:true})),{vals:labels.map((_,i)=>t(r=>r.fx[i].saldo)),color:'var(--pine)',dots:true}],h:190})}
+    ${chart({title:'Saldo projetado por propriedade',labels,lines:[...rows.map((r,i)=>({vals:r.fx.map(x=>x.saldo),color:cor(i),dash:true})),{vals:labels.map((_,i)=>t(r=>r.fx[i].saldo)),color:'var(--pine)',dots:true}],h:190})}
     ${legend([...rows.map((r,i)=>({c:cor(i),t:esc(r.f.nome),dash:1})),{c:'var(--pine)',t:'Total',ln:1}])}
   </section>
   <section class="card sec">
-    <h3>Comparativo entre fazendas</h3>
-    <div class="tbl"><table><thead><tr><th>Fazenda</th><th>kg safra</th><th>kg/árv.</th><th>Preço livre</th><th>Lucro</th><th>Saldo</th><th>A receber</th><th>Alertas</th></tr></thead><tbody>
+    <h3>Comparativo entre propriedades</h3>
+    <div class="tbl"><table><thead><tr><th>Propriedade</th><th>kg safra</th><th>kg/árv.</th><th>Preço livre</th><th>Lucro</th><th>Saldo</th><th>A receber</th><th>Alertas</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td><button type="button" class="lnk" data-faz="${r.f.id}">${esc(r.f.nome)}</button></td><td>${num(r.T.kgProd)}</td><td>${num(r.arv?r.T.kgProd/r.arv:0,2)}</td><td>${brl(r.T.precoLivre)}</td>
       <td class="${r.T.lucro>=0?'up':'down'}">${brl(r.T.lucro)}</td><td>${brl(r.saldo)}</td><td>${brl(r.aRec)}</td>
       <td>${[r.atras?`<span class="pill pend">${plural(r.atras,'ramal atrasado','ramais atrasados')}</span>`:'', r.nfp&&mod('nfe')?`<span class="pill nfp">${r.nfp} NF-e</span>`:''].join('')||'—'}</td></tr>`).join('')}
     <tr><td><b>Total</b></td><td><b>${num(kg)}</b></td><td><b>${num(arvs?kg/arvs:0,2)}</b></td><td><b>${brl(kgV?liq/kgV:0)}</b></td><td><b>${brl(lucro)}</b></td><td><b>${brl(saldo)}</b></td><td><b>${brl(aRec)}</b></td><td></td></tr>
     </tbody></table></div>
-    <p class="note">A visão geral só consulta. Para lançar dados, toque no nome da fazenda. Os registros de cada fazenda continuam separados.</p>
+    <p class="note">A visão geral só consulta. Para lançar dados, toque no nome da propriedade. Os registros de cada propriedade continuam separados.</p>
   </section>`:''}`;
 },
 
@@ -188,10 +236,12 @@ inicio(){
 },
 
 caixa(){
-  const fx=fluxo(6), minS=Math.min(...fx.map(f=>f.saldo)), T0=hoje();
-  const lista = E.modoCaixa==='real'
-    ? [...S.caixa].sort((a,b)=>b.data.localeCompare(a.data)).slice(0,25)
-    : [...S.comp, ...S.vendas.filter(v=>saldoV(v)>0).map(v=>({id:v.id,venda:true,data:v.venc||T0,tipo:'r',cat:'Venda de resina',desc:`A receber de ${v.comprador}`,valor:saldoV(v)}))].sort((a,b)=>a.data.localeCompare(b.data));
+  const fx=fluxo(6), minS=Math.min(...fx.map(f=>f.saldo)), T0=hoje(), real=E.modoCaixa==='real', tab=real?'lancamentos':'compromissos', p=propAtual();
+  const lista = real
+    ? [...S.caixa].sort((a,b)=>b.data.localeCompare(a.data)).slice(0, E.sel?.tab===tab ? 200 : 25)
+    : [...S.comp, ...S.vendas.filter(v=>saldoV(v)>0).map(v=>({id:v.id,venda:true,data:v.venc||T0,tipo:'r',cat:'Venda de resina',desc:`A receber de ${v.comprador}`,valor:saldoV(v),entidade:v.entidade}))].sort((a,b)=>a.data.localeCompare(b.data));
+  const sel = E.sel?.tab===tab;
+  const quem = x => variasEnt() ? ' · '+chipEnt(entPor(x.entidade)) : '';
   return `
   <section class="sec">
     <h2>Fluxo de caixa previsto</h2>
@@ -206,26 +256,37 @@ caixa(){
     </div>
   </section>
   <section class="card sec">
-    <div class="seg" data-grp="modo"><button type="button" data-modo="real" aria-pressed="${E.modoCaixa==='real'}">Realizado</button><button type="button" data-modo="comp" aria-pressed="${E.modoCaixa==='comp'}">Compromissos futuros</button></div>
+    <div class="seg" data-grp="modo"><button type="button" data-modo="real" aria-pressed="${real}">Realizado</button><button type="button" data-modo="comp" aria-pressed="${!real}">Compromissos futuros</button></div>
     <div class="seg"><button type="button" data-tipo="d" aria-pressed="${E.tipoLanc==='d'}">Saída</button><button type="button" data-tipo="r" aria-pressed="${E.tipoLanc==='r'}">Entrada</button></div>
     <form id="fCaixa">
-      <label>${E.modoCaixa==='real'?'Data':'Vencimento'}<input id="cData" type="date" value="${E.modoCaixa==='real'?T0:addD(T0,30)}" required></label>
-      <label>Valor (R$)<input id="cValor" type="number" step="0.01" min="0" inputmode="decimal" required></label>
-      <label class="full">Categoria<select id="cCat">${(E.tipoLanc==='d'?CATS_D:CATS_R).map(c=>`<option>${c}</option>`).join('')}</select></label>
-      <label class="full">Descrição<input id="cDesc" placeholder="${E.modoCaixa==='real'?'Ex.: diária de resineiro':'Ex.: parcela do arrendamento'}"></label>
-      <button class="btn full">${E.modoCaixa==='real'?'Lançar':'Agendar compromisso'}</button>
+      <label>${real?'Data do pagamento':'Vencimento'}<input name="data" type="date" value="${real?T0:addD(T0,30)}" required></label>
+      <label>Valor (R$)<input name="valor" type="number" step="0.01" min="0" inputmode="decimal" required></label>
+      <label class="full">Categoria<select name="cat">${(E.tipoLanc==='d'?CATS_D:CATS_R).map(c=>`<option>${c}</option>`).join('')}</select></label>
+      <label class="full">Descrição<input name="desc" placeholder="${real?'Ex.: diária de resineiro':'Ex.: parcela do arrendamento'}"></label>
+      ${fatHtml('fat', p)}
+      ${docCampos({}, E.tipoLanc)}
+      <p class="err full" hidden></p>
+      <button class="btn full">${real?'Lançar':'Agendar compromisso'}</button>
     </form>
   </section>
-  <section class="card list">${lista.map(x=>{ const tab=E.modoCaixa==='real'?'lancamentos':'compromissos';
-    if (!x.venda && editando(tab, x.id)) return `<form class="fEdLanc row" data-tab="${tab}" data-id="${x.id}" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <label>${tab==='lancamentos'?'Data':'Vencimento'}<input name="data" type="date" value="${x.data}" required></label>
+  <section class="card list">
+    ${selBtn(tab)?`<div class="sec-h" style="padding-top:4px">${selBtn(tab)}</div>`:''}
+    ${sel?selBar(tab):''}
+    ${lista.map(x=>{
+    if (sel && !x.venda) return rowSel(x.id, esc(x.desc||x.cat), `<span class="${x.tipo==='d'?'down':'up'}">${x.tipo==='d'?'−':'+'} ${brl(x.valor)}</span>`, `${fdata(x.data)} · ${esc(x.cat)}${quem(x)}`);
+    if (sel) return '';
+    if (!x.venda && editando(tab, x.id)) return `<form class="fEdLanc row" data-tab="${tab}" data-id="${x.id}" data-tipo="${x.tipo}" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label>${tab==='lancamentos'?'Data do pagamento':'Vencimento'}<input name="data" type="date" value="${x.data}" required></label>
       <label>Valor (R$)<input name="valor" type="number" step="0.01" min="0" inputmode="decimal" value="${x.valor}" required></label>
       <label class="full">Categoria<select name="cat">${(x.tipo==='d'?CATS_D:CATS_R).map(c=>`<option ${c===x.cat?'selected':''}>${c}</option>`).join('')}</select></label>
       <label class="full">Descrição<input name="desc" value="${esc(x.desc)}"></label>
+      ${fatHtml('fat', p, `${x.fazenda}|${x.entidade||''}`)}
+      ${docCampos(x, x.tipo)}
+      <p class="err full" hidden></p>
       <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`;
     return `
     <div class="row"><span class="t">${esc(x.desc||x.cat)}</span><span class="a ${x.tipo==='d'?'down':'up'}">${x.tipo==='d'?'−':'+'} ${brl(x.valor)}</span>
-    <span class="s">${fdata(x.data)} · ${esc(x.cat)}${E.modoCaixa==='comp'&&!x.venda?` · <button type="button" class="lnk" data-realizar="${x.id}">marcar como pago</button>`:''}${x.venda?' · ver em Vendas':` · ${acoes(tab, x.id, {editar:true})}`}</span></div>`; }).join('') || `<p class="note">${E.modoCaixa==='real'?'Nenhum lançamento ainda.':'Nenhum compromisso futuro. Agende salários, insumos e vendas previstas para ver o fluxo.'}</p>`}
+    <span class="s">${fdata(x.data)} · ${esc(x.cat)}${quem(x)}${!real&&!x.venda?` · <button type="button" class="lnk" data-realizar="${x.id}">marcar como pago</button>`:''}${x.venda?' · ver em Vendas':` · ${acoes(tab, x.id, {editar:true})}`}</span></div>`; }).join('') || `<p class="note">${real?'Nenhum lançamento ainda.':'Nenhum compromisso futuro. Agende salários, insumos e vendas previstas para ver o fluxo.'}</p>`}
   </section>`;
 },
 
@@ -238,7 +299,7 @@ floresta(){
   const nRam = sum(S.talhoes,x=>x.ramais.length);
   const head = `
   <section class="sec">
-    <div class="sec-h"><h2>Floresta · ${esc(fazAtual()?.nome||'')}</h2><span class="tag">${plural(S.talhoes.length,'talhão','talhões')} · ${plural(nRam,'ramal','ramais')} · ${plural(totPaineis(),'árvore','árvores')}</span></div>
+    <div class="sec-h"><h2>Floresta · ${esc(propAtual()?.nome||'')}</h2><span class="tag">${plural(S.talhoes.length,'talhão','talhões')} · ${plural(nRam,'ramal','ramais')} · ${plural(totPaineis(),'árvore','árvores')}</span></div>
     ${sub}
   </section>`;
   const situ = s => s.ult==null ? '<span class="pill sem">Sem estria</span>' : s.atraso>0 ? `<span class="pill ${s.atraso>ATRASO_CRITICO?'late':'pend'}">${s.atraso}d atraso</span>` : '<span class="pill ok">Em dia</span>';
@@ -289,6 +350,7 @@ floresta(){
     </form>`:''}
     <form id="fTal">
       <label class="full">Novo talhão<input id="tNome" placeholder="Ex.: Talhão D" required></label>
+      ${S.fazendas.length>1?`<label class="full">Inscrição Estadual<select id="tFaz">${S.fazendas.map(f=>`<option value="${f.id}">IE ${esc(f.ie)} · ${esc(f.nome)}</option>`).join('')}</select></label>`:''}
       <p class="err full" id="tErr" hidden></p>
       <button class="btn full ghost">Adicionar talhão</button>
     </form>
@@ -406,7 +468,7 @@ producao(){
 },
 
 vendas(){
-  const T=tot(E.safraSel), T0=hoje();
+  const T=tot(E.safraSel), T0=hoje(), p=propAtual(), sel=E.sel?.tab==='vendas', fzs=S.fazendas;
   const vs=S.vendas.filter(inSafra(E.safraSel)).sort((a,b)=>a.data.localeCompare(b.data));
   const aRec=sum(S.vendas,saldoV);
   const pillRec = v => ({pend:'<span class="pill pend">A receber</span>',parcial:'<span class="pill pend">Parcial</span>',ok:'<span class="pill ok">Recebido</span>'})[statusRec(v)];
@@ -416,8 +478,8 @@ vendas(){
     <div class="sec-h"><h2>Vendas e compradores</h2>${chipsSafra()}</div>
     <div class="card sec">
       <h3>Como você contribui para a Previdência?</h3>
-      <div class="seg">${Object.entries(REG).map(([k,r])=>`<button type="button" data-reg="${k}" aria-pressed="${S.regime===k}">${r.nome}</button>`).join('')}</div>
-      <p class="note">${REG[S.regime].nome}: ${REG[S.regime].desc}. Preço livre = preço de venda × ${num(fat(),4)}. É o valor que cai na conta e o que o app usa para recebimentos, fluxo de caixa e margem. Vale para as próximas vendas. As vendas já registradas mantêm o desconto da época.</p>
+      ${fzs.map(f=>`${fzs.length>1?`<span class="note"><b>IE ${esc(f.ie)}</b> · ${esc(f.nome)}</span>`:''}<div class="seg">${Object.entries(REG).map(([k,r])=>`<button type="button" data-reg="${k}" data-regfaz="${f.id}" aria-pressed="${f.regime===k}">${r.nome}</button>`).join('')}</div>`).join('')}
+      <p class="note">${fzs.length>1?`Cada inscrição tem o seu regime. Preço livre = preço de venda × ${num(REG.funrural.f,4)} (Funrural) ou × ${num(REG.folha.f,4)} (folha).`:`${REG[S.regime].nome}: ${REG[S.regime].desc}. Preço livre = preço de venda × ${num(fat(),4)}.`} É o valor que cai na conta e o que o app usa para recebimentos, fluxo de caixa e margem. Vale para as próximas vendas. As vendas já registradas mantêm o desconto da época.</p>
     </div>
     <div class="kpis">
       <div class="card kpi"><div class="l">Preço médio da safra</div><div class="v">${brl(T.precoMedio)}<small>/kg</small></div></div>
@@ -437,7 +499,8 @@ vendas(){
     <h3>Registrar venda</h3>
     <form id="fVenda">
       <label class="full">Comprador<input id="vComp" list="comps" required placeholder="Ex.: Resinas Vale Sul"></label>
-      <datalist id="comps">${[...new Set(S.vendas.map(v=>v.comprador))].map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      <datalist id="comps">${[...new Set(S.todas.vendas.map(v=>v.comprador))].map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      ${fatHtml('fat', p)}
       <label>Quantidade (kg)<input id="vKg" type="number" min="1" inputmode="numeric" required></label>
       <label>Preço por kg (R$)<input id="vPreco" type="number" step="0.01" min="0.01" inputmode="decimal" value="${MERCADO.resina.v.toFixed(2)}" required></label>
       <label>Data da venda<input id="vData" type="date" value="${T0}" required></label>
@@ -449,13 +512,16 @@ vendas(){
     </form>
     <p class="note">Fluxo: <b>registrar a venda</b> → ${mod('nfe')?'<b>emitir a NF-e</b> (quando houver nota) → ':''}<b>registrar o recebimento</b>. O saldo a receber entra no fluxo de caixa previsto.</p>
   </section>
-  <section class="card list" style="padding-block:2px">${[...vs].reverse().map(v=>{
+  <section class="card list" style="padding-block:2px">
+    ${selBtn('vendas')?`<div class="sec-h" style="padding-top:10px">${selBtn('vendas')}</div>`:''}
+    ${sel?selBar('vendas')+[...vs].reverse().map(v=>rowSel(v.id, esc(v.comprador), brl(liqV(v)), `${fdata(v.data)} · ${num(v.kg)} kg${variasEnt()?' · '+chipEnt(entPor(v.entidade)):''}${fzs.length>1?' · IE '+esc(fzs.find(f=>f.id===v.fazenda)?.ie||''):''}`)).join(''):''}
+    ${sel?'':[...vs].reverse().map(v=>{
     const st=statusRec(v), pct=pctRec(v), dif=T.precoLivre?(livreV(v)/T.precoLivre-1)*100:0;
     return `
     <details class="venda" ${v.id===E.aberta?'open':''} data-venda="${v.id}">
       <summary><span class="t">${esc(v.comprador)}</span><span class="a">${brl(liqV(v))}<br><small class="note" style="font-weight:400">líquido</small></span>
         <span class="s">${fdata(v.data)} · ${num(v.kg)} kg a ${brl(v.preco)} · livre <b class="liv">${brl(livreV(v))}/kg</b> <span class="${dif>=0?'up':'down'}">(${dif>=0?'+':''}${num(dif,1)}% vs média)</span></span>
-        <span class="pills">${pillNf(v)}${pillRec(v)}</span></summary>
+        <span class="pills">${variasEnt()?chipEnt(entPor(v.entidade)):''}${fzs.length>1?`<span class="pill sem">IE ${esc(fzs.find(f=>f.id===v.fazenda)?.ie||'')}</span>`:''}${pillNf(v)}${pillRec(v)}</span></summary>
       <div class="det">
         ${editando('vendas',v.id)?`<form class="fEdVenda box" data-id="${v.id}" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <label class="full">Comprador<input name="comprador" value="${esc(v.comprador)}" required></label>
@@ -463,6 +529,7 @@ vendas(){
           <label>Preço por kg (R$)<input name="preco" type="number" step="0.01" min="0.01" inputmode="decimal" value="${v.preco}" required></label>
           <label>Data da venda<input name="data" type="date" value="${v.data}" required></label>
           <label>Previsão de recebimento<input name="venc" type="date" value="${v.venc||''}"></label>
+          ${fatHtml('fat', p, `${v.fazenda}|${v.entidade||''}`)}
           <p class="err full" hidden></p>
           <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-editar="">Cancelar</button></div></form>`
         :`<span class="note">Venda: ${acoes('vendas', v.id, {editar:true, aviso:v.recs.length?'Os recebimentos desta venda também serão apagados.':''})}</span>`}
@@ -486,16 +553,37 @@ vendas(){
           ${v.recs.map(r=>`<div class="rec"><span>${fdata(r.data)} · ${esc(r.forma)} · ${acoes('recebimentos', r.id)}</span><b>${brl(r.valor)}</b></div>`).join('')}
           ${st!=='ok' ? `<span class="note">Previsão do saldo: <b>${fdata(v.venc||T0)}</b></span>
           <form class="fRec" data-id="${v.id}" style="margin-top:4px">
-            <label>Data<input name="d" type="date" value="${T0}" required></label>
+            <label>Data do recebimento<input name="d" type="date" value="${T0}" required></label>
             <label>Valor (R$)<input name="val" type="number" step="0.01" min="0.01" max="${saldoV(v)}" value="${saldoV(v).toFixed(2)}" inputmode="decimal" required></label>
             <label class="full">Forma<select name="f">${FORMAS.map(f=>`<option>${f}</option>`).join('')}</select></label>
+            ${contaSel(v)}
             <button class="btn sm full">Registrar recebimento</button>
           </form>${mod('nfe') && v.comNota && !v.nf ? '<span class="note">Dica: emita a NF-e antes de receber, para o comprador ter o documento.</span>':''}` : ''}
         </div>
       </div>
-    </details>`;}).join('') || '<p class="note" style="padding-block:12px">Nenhuma venda nesta safra.</p>'}
+    </details>`;}).join('')}
+    ${vs.length?'':'<p class="note" style="padding-block:12px">Nenhuma venda nesta safra.</p>'}
   </section>
   <dialog id="dlgNf"></dialog>`;
+},
+
+/* propriedades, inscrições, CPFs/CNPJs, vínculos e contas bancárias */
+cadastros(){
+  const u=usuario(), voltar = SES.pid==='todas' ? 'geral' : SES.pid ? 'inicio' : 'fazendas';
+  return `
+  <section class="sec">
+    <div class="sec-h"><h2>Minhas propriedades e CPFs/CNPJs</h2><button type="button" class="btn sm ghost" data-ir="${voltar}">Voltar</button></div>
+    <p class="note">A <b>produção</b> é de cada propriedade. O <b>financeiro</b> é de quem faturou: o CPF ou o CNPJ. Cada propriedade tem uma ou mais Inscrições Estaduais, e cada inscrição tem os CPFs/CNPJs que faturam por ela.</p>
+  </section>
+  <section class="card sec">
+    <div class="sec-h"><h3>CPFs e CNPJs</h3>${E.entEdit?'':'<button type="button" class="btn sm ghost" data-entedit="novo">Adicionar</button>'}</div>
+    ${E.entEdit==='novo'?entForm(null):''}
+    <div class="list">${u.entidades.map(e=>E.entEdit===e.id ? entForm(e) : `<div class="row"><span class="t">${chipEnt(e)}${e.padrao?'<span class="pill ok">padrão</span>':''}${e.ativo?'':'<span class="pill sem">inativo</span>'}</span>
+      <span class="a"><button type="button" class="lnk" data-entedit="${e.id}">Editar</button></span>
+      <span class="s">${e.tipo==='PF'?'CPF':'CNPJ'} ${e.documento?docTxt(e):'<b class="warn">a preencher</b>'} · ${esc(e.nome)} · ${REGIMES_TRIB[e.regime]||''}${e.contas.length?' · '+plural(e.contas.length,'conta','contas'):''}${e._erro?` · <span class="down">${esc(e._erro)}</span>`:''}</span></div>`).join('') || '<p class="note">Nenhum CPF/CNPJ ainda. Ele aparece depois da primeira sincronização ou quando você adicionar.</p>'}</div>
+  </section>
+  ${u.propriedades.map(propCard).join('')}
+  <section class="card sec">${propForm()}</section>`;
 },
 
 resultado(){
@@ -526,18 +614,109 @@ resultado(){
 /* ---------- conta: helpers ---------- */
 const modsHtml = sel => MODS.map(m=>`<label class="ram"><input type="checkbox" name="mod" value="${m.k}" ${sel?.[m.k]?'checked':''}>
   <span><b>${m.n}</b><small>${m.d}${m.req?` · requer ${MODS.find(x=>x.k===m.req).n}`:''}</small></span></label>`).join('');
-const fazForm = f => `<form id="fFaz" data-id="${f?.id||''}">
-  <h3 class="full">${f?'Editar '+esc(f.nome):'Cadastrar fazenda'}</h3>
-  <label class="full">Nome da fazenda<input id="zNome" value="${esc(f?.nome||'')}" required placeholder="Ex.: Fazenda Santa Rita"></label>
+const optUf = sel => UFS.map(x=>`<option ${x===(sel||'PR')?'selected':''}>${x}</option>`).join('');
+const optReg = sel => Object.entries(REG).map(([k,r])=>`<option value="${k}" ${k===(sel||'funrural')?'selected':''}>${r.nome} · ${r.desc}</option>`).join('');
+/* propriedade nova já com a primeira inscrição */
+const propForm = () => { const ents=(usuario()?.entidades||[]).filter(e=>e.ativo); return `<form id="fProp">
+  <h3 class="full">Cadastrar propriedade</h3>
+  <label class="full">Nome da propriedade<input id="pNome" required placeholder="Ex.: Fazenda Santa Rita"></label>
+  <label>Município<input id="pMun" required></label>
+  <label>UF<select id="pUf">${optUf()}</select></label>
+  <label>Inscrição Estadual (ICMS)<input id="pIe" inputmode="numeric" required placeholder="Somente números"></label>
+  <label>Contribuição previdenciária<select id="pReg">${optReg()}</select></label>
+  ${ents.length>1?`<label class="full">CPF/CNPJ que fatura por esta inscrição<select id="pEnt">${ents.map(e=>`<option value="${e.id}" ${e.padrao?'selected':''}>${esc(nomeEnt(e))} · ${e.tipo==='PF'?'CPF':'CNPJ'} ${docTxt(e)}</option>`).join('')}</select></label>`:''}
+  <label class="ram full"><input type="checkbox" id="pEx"><span><b>Começar com dados de exemplo</b><small>Útil para testar o app. Dá para apagar depois.</small></span></label>
+  <p class="err full" id="pErr" hidden></p>
+  <button class="btn full">Cadastrar propriedade</button>
+  <p class="note full">Área, NIRF/CIB, CAR, outras inscrições e CPFs/CNPJs ficam em <b>Minhas propriedades e CPFs/CNPJs</b>.</p>
+</form>`; };
+function propCard(p){
+  const ed = E.propEdit===p.id;
+  return `<section class="card sec">
+    <div class="sec-h"><h3>${esc(p.nome)}</h3>${ed?'':`<button type="button" class="lnk" data-propedit="${p.id}">Editar propriedade</button>`}</div>
+    ${p._erro?`<span class="err">${esc(p._erro)}</span>`:''}
+    ${ed?`<form id="fPropEd" data-id="${p.id}">
+      <label class="full">Nome da propriedade<input name="nome" value="${esc(p.nome)}" required></label>
+      <label>Município<input name="mun" value="${esc(p.municipio)}" required></label>
+      <label>UF<select name="uf">${optUf(p.uf)}</select></label>
+      <label>Área (ha)<input name="area" type="number" min="0" step="0.01" inputmode="decimal" value="${p.area_ha??''}"></label>
+      <label>NIRF / CIB<input name="nirf" value="${esc(p.nirf_cib)}"></label>
+      <label class="full">CAR<input name="car" value="${esc(p.car)}"></label>
+      <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-propedit="">Cancelar</button></div></form>`
+    :`<span class="note">${esc(p.municipio)}/${esc(p.uf)}${p.area_ha!=null?' · '+num(p.area_ha,2)+' ha':''}${p.nirf_cib?' · NIRF/CIB '+esc(p.nirf_cib):''}${p.car?' · CAR '+esc(p.car):''}</span>`}
+    ${p.fazendas.map(f=>fazCard(f,p)).join('')}
+    ${E.fazEdit==='novo:'+p.id ? `<div class="box">${fazForm(null,p)}</div>` : `<button type="button" class="btn sm ghost" data-editfaz="novo:${p.id}" style="align-self:flex-start">Adicionar inscrição estadual</button>`}
+  </section>`;
+}
+function fazCard(f, p){
+  const soma = sum(f.vinculos, v=>v.percentual), ed = E.fazEdit===f.id;
+  return `<div class="box">
+    <div class="sec-h"><h3>IE ${esc(f.ie)} · ${esc(f.nome)}</h3>${ed?'':`<button type="button" class="lnk" data-editfaz="${f.id}">Editar inscrição</button>`}</div>
+    <span class="note">${REG[f.regime]?.nome||''}${f._erro?` · <span class="down">${esc(f._erro)}</span>`:''}</span>
+    ${ed?fazForm(f,p)+`<span class="note">Apagar registros remove talhões, operações, vendas e lançamentos desta inscrição. O cadastro continua.</span>
+      ${E.limparPend===f.id?`<div class="hbtn"><button type="button" class="btn sm" style="background:var(--bad)" data-limpafaz="${f.id}" data-ok="1">Confirmar: apagar tudo</button><button type="button" class="btn sm ghost" data-limpafaz="">Cancelar</button></div>`
+      :`<button type="button" class="btn sm ghost" data-limpafaz="${f.id}" style="align-self:flex-start">Apagar registros desta inscrição</button>`}
+      ${f.demo?`<span class="note">Dados de exemplo gerados em ${f.demo_gerado_em?fdata(f.demo_gerado_em):'—'}. Regerar troca os registros por exemplos novos, com datas a partir de hoje.</span>
+      <button type="button" class="btn sm ghost" data-regerar="${f.id}" style="align-self:flex-start">Regerar dados de exemplo</button>`:''}`:''}
+    <span class="note"><b>CPFs/CNPJs desta inscrição</b></span>
+    <div class="list">${f.vinculos.map(v=>E.vincEdit===v.id ? vincForm(f,v) : `<div class="row"><span class="t">${chipEnt(entPor(v.entidade))}${v.padrao?'<span class="pill ok">padrão</span>':''}</span><span class="a">${num(v.percentual,2)}%</span>
+      <span class="s">${CONDICOES[v.condicao]||''}${v.inicio||v.fim?` · ${v.inicio?'de '+fdata(v.inicio)+'/'+v.inicio.slice(2,4):''}${v.fim?' até '+fdata(v.fim)+'/'+v.fim.slice(2,4):''}`:''} · <button type="button" class="lnk" data-vincedit="${v.id}">editar</button>${v.padrao?'':' · '+acoes('vinculos', v.id)}</span></div>`).join('') || '<p class="note">Nenhum CPF/CNPJ vinculado. Os registros contam para o CPF/CNPJ padrão.</p>'}</div>
+    ${soma>100?`<span class="note down">A soma das participações passa de 100% (${num(soma,2)}%). Confira os percentuais.</span>`:''}
+    ${E.vincEdit==='novo:'+f.id ? vincForm(f,null) : `<button type="button" class="lnk" data-vincedit="novo:${f.id}" style="align-self:flex-start">Vincular CPF/CNPJ</button>`}
+  </div>`;
+}
+/* inscrição estadual (no app, a "fazenda": é ela que tem talhões e emite a nota) */
+const fazForm = (f, p) => `<form id="fFaz" data-id="${f?.id||''}" data-prop="${p.id}">
+  <label class="full">Nome<input id="zNome" value="${esc(f?.nome||p.nome)}" required placeholder="Ex.: Fazenda Santa Rita"></label>
   <label>Inscrição Estadual (ICMS)<input id="zIe" inputmode="numeric" value="${esc(f?.ie||'')}" required placeholder="Somente números"></label>
-  <label>CPF/CNPJ do produtor<input id="zDoc" inputmode="numeric" value="${esc(f?.doc||'')}" placeholder="Opcional"></label>
-  <label>Município<input id="zMun" value="${esc(f?.municipio||'')}" required></label>
-  <label>UF<select id="zUf">${UFS.map(x=>`<option ${x===(f?.uf||'PR')?'selected':''}>${x}</option>`).join('')}</select></label>
-  <label class="full">Contribuição previdenciária<select id="zReg">${Object.entries(REG).map(([k,r])=>`<option value="${k}" ${k===(f?.dados.regime||'funrural')?'selected':''}>${r.nome} · ${r.desc}</option>`).join('')}</select></label>
-  ${f?'':`<label class="ram full"><input type="checkbox" id="zEx"><span><b>Começar com dados de exemplo</b><small>Útil para testar o app. Dá para apagar depois em Conta.</small></span></label>`}
+  <label>UF<select id="zUf">${optUf(f?.uf||p.uf)}</select></label>
+  <label class="full">Município<input id="zMun" value="${esc(f?.municipio||p.municipio)}" required></label>
+  <label class="full">Contribuição previdenciária<select id="zReg">${optReg(f?.regime)}</select></label>
+  ${f && usuario().propriedades.filter(x=>!x.virtual).length>1?`<label class="full">Propriedade<select id="zProp">${usuario().propriedades.filter(x=>!x.virtual).map(x=>`<option value="${x.id}" ${x.id===p.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>`:''}
   <p class="err full" id="zErr" hidden></p>
-  <button class="btn full">${f?'Salvar alterações':'Cadastrar fazenda'}</button>
-  ${f?'<button type="button" class="btn full ghost" data-editfaz="">Cancelar</button>':''}
+  <div class="hbtn full"><button class="btn sm">${f?'Salvar inscrição':'Adicionar inscrição'}</button><button type="button" class="btn sm ghost" data-editfaz="">Cancelar</button></div>
 </form>`;
+function entForm(e){
+  const tipo = e?.tipo||'PF', cor = e?.cor || CORES_ENT[(usuario()?.entidades.length||0) % CORES_ENT.length];
+  const usos = e ? sum(usuario().propriedades.filter(p=>p.dados), p=>['vendas','caixa','comp'].reduce((n,k)=>n+p.dados.todas[k].filter(x=>x.entidade===e.id).length,0))
+    + sum(usuario().fazendas, f=>f.vinculos.filter(v=>v.entidade===e.id).length) : 0;
+  return `<div class="box"><form id="fEnt" data-id="${e?.id||''}">
+    <h3 class="full">${e?'Editar '+esc(nomeEnt(e)):'Novo CPF ou CNPJ'}</h3>
+    <div class="chips full">${[['PF','Pessoa física (CPF)'],['PJ','Empresa (CNPJ)']].map(([k,n])=>`<label class="opc"><input type="radio" name="tipo" value="${k}" ${k===tipo?'checked':''}>${n}</label>`).join('')}</div>
+    <label class="full">Nome ou razão social<input name="nome" value="${esc(e?.nome||'')}" required></label>
+    <label>Apelido<input name="apelido" value="${esc(e?.apelido||'')}" placeholder="Ex.: CPF João"></label>
+    <label>CPF ou CNPJ<input name="doc" inputmode="numeric" data-mask="doc" value="${esc(docTxt(e))}" placeholder="Somente números"></label>
+    <label class="full">Regime tributário<select name="regime">${Object.entries(REGIMES_TRIB).map(([k,n])=>`<option value="${k}" ${k===(e?.regime||(tipo==='PF'?'PF_ATIVIDADE_RURAL':'SIMPLES'))?'selected':''}>${n}</option>`).join('')}</select></label>
+    <fieldset class="full fat"><legend>Cor nos botões e relatórios</legend><div class="chips">${CORES_ENT.map(c=>`<label class="opc"><input type="radio" name="cor" value="${c}" ${c===cor?'checked':''}><span class="ent" style="--c:${c}" aria-label="cor ${c}">&#8203;</span></label>`).join('')}</div></fieldset>
+    <label class="ram"><input type="checkbox" name="padrao" ${e?.padrao?'checked disabled':''}><span><b>Padrão</b><small>Sugerido em inscrições novas</small></span></label>
+    <label class="ram"><input type="checkbox" name="ativo" ${e?.ativo!==false?'checked':''} ${e?.padrao?'disabled':''}><span><b>Ativo</b><small>Inativo sai dos botões; os registros ficam</small></span></label>
+    <p class="err full" hidden></p>
+    <div class="hbtn full"><button class="btn sm">Salvar</button><button type="button" class="btn sm ghost" data-entedit="">Cancelar</button></div>
+  </form>
+  ${e?`<h3>Contas bancárias</h3>
+    <div class="list">${e.contas.map(c=>`<div class="row"><span class="t">${esc(lblConta({...c, e:null}))}</span><span class="s">${acoes('contas_bancarias', c.id)}</span></div>`).join('') || '<p class="note">Nenhuma conta cadastrada.</p>'}</div>
+    <form id="fConta" data-ent="${e.id}">
+      <label>Banco<input name="banco" required placeholder="Ex.: Sicredi"></label>
+      <label>Apelido<input name="apelido" placeholder="Ex.: conta da safra"></label>
+      <label>Agência<input name="ag" inputmode="numeric"></label>
+      <label>Conta<input name="cc"></label>
+      <button class="btn sm ghost full">Adicionar conta</button>
+    </form>
+    ${e.padrao?'':usos?`<span class="note">Este ${e.tipo==='PF'?'CPF':'CNPJ'} tem ${plural(usos,'registro ou vínculo','registros ou vínculos')}. Para tirar dos botões, desmarque <b>Ativo</b>.</span>`:`<span class="note">${acoes('entidades_fiscais', e.id)}</span>`}`:''}
+  </div>`;
+}
+function vincForm(f, v){
+  const ents = usuario().entidades.filter(e=>e.ativo || e.id===v?.entidade);
+  return `<form id="fVinc" data-fazenda="${f.id}" data-id="${v?.id||''}" class="box">
+    <label class="full">CPF/CNPJ<select name="ent" ${v?'disabled':''}>${ents.map(e=>`<option value="${e.id}" ${e.id===v?.entidade?'selected':''}>${esc(nomeEnt(e))} · ${e.tipo==='PF'?'CPF':'CNPJ'} ${docTxt(e)}</option>`).join('')}</select></label>
+    <label>Participação (%)<input name="pct" type="number" min="0" max="100" step="0.01" inputmode="decimal" value="${v?.percentual??100}" required></label>
+    <label>Condição<select name="cond">${Object.entries(CONDICOES).map(([k,n])=>`<option value="${k}" ${k===(v?.condicao||'PROPRIETARIO')?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label>Início da vigência<input name="ini" type="date" value="${v?.inicio||''}"></label>
+    <label>Fim da vigência<input name="fim" type="date" value="${v?.fim||''}"></label>
+    <label class="ram full"><input type="checkbox" name="padrao" ${v?.padrao||!f.vinculos.length?'checked':''} ${v?.padrao?'disabled':''}><span><b>Padrão desta inscrição</b><small>Vem marcado em "Faturado por"</small></span></label>
+    <p class="err full" hidden></p>
+    <div class="hbtn full"><button class="btn sm">Salvar vínculo</button><button type="button" class="btn sm ghost" data-vincedit="">Cancelar</button></div>
+  </form>`;
+}
 
-export { safras, chipsSafra, optTalhoes, V, modsHtml, fazForm };
+export { safras, chipsSafra, optTalhoes, V, modsHtml, fazForm, propForm, chipEnt, entPor };

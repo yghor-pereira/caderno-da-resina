@@ -15,15 +15,15 @@ const FID = '00000000-0000-4000-8000-0000000000aa';
 before(() => {
   est.abrirSessao('u-teste');
   gravarLote(est.SES.L, est.linhasExemplo({ id: FID, nome: 'Fazenda X', ie: '11122233', doc: '', municipio: 'Lapa', uf: 'PR' }, exemplo(5)));
-  est.usarFazendaId(FID);
+  est.usarPropriedadeId(FID);   // fazenda sem propriedade: aparece como propriedade virtual, com o id dela
 });
 
 test('apagar os dados de exemplo zera o saldo inicial', () => {
-  assert.equal(est.fazAtual().dados.saldoInicial, 9000);
+  assert.equal(est.propAtual().dados.saldoInicial, 9000);
   est.limparFazenda(FID);
-  assert.equal(est.fazAtual().dados.saldoInicial, 0);
-  assert.equal(est.fazAtual().dados.demo, false);
-  assert.equal(est.fazAtual().dados.vendas.length, 0);
+  assert.equal(est.propAtual().dados.saldoInicial, 0);
+  assert.equal(est.propAtual().dados.demo, false);
+  assert.equal(est.propAtual().dados.vendas.length, 0);
 });
 
 test('campos da NF-e são escapados na tela de vendas', () => {

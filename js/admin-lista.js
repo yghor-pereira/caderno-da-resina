@@ -48,15 +48,17 @@ function quando(iso, agora = Date.now()){
 }
 
 /* nomes do catálogo de métricas na linguagem do produtor */
-const NOMES_TELA = {fazendas:'Escolha de fazenda', geral:'Visão geral', conta:'Conta', senha:'Troca de senha', inicio:'Início',
+const NOMES_TELA = {fazendas:'Escolha de propriedade', geral:'Visão geral', conta:'Conta', cadastros:'Propriedades e CPFs/CNPJs', senha:'Troca de senha', inicio:'Início',
   'caixa:real':'Caixa · realizado', 'caixa:comp':'Caixa · compromissos', 'floresta:ramais':'Floresta · talhões e ramais',
   'floresta:apontar':'Floresta · apontar', 'floresta:estrias':'Floresta · estrias', producao:'Produção', vendas:'Vendas', resultado:'Resultado'};
-const NOMES_TABELA = {perfis:'perfil', fazendas:'fazenda', talhoes:'talhão', ramais:'ramal', contagens:'contagem de árvores', estrias:'estria',
+const NOMES_TABELA = {perfis:'perfil', propriedades:'propriedade', entidades_fiscais:'CPF/CNPJ', contas_bancarias:'conta bancária',
+  vinculos:'vínculo de CPF/CNPJ', rateios:'rateio', fazendas:'inscrição estadual', talhoes:'talhão', ramais:'ramal', contagens:'contagem de árvores', estrias:'estria',
   coletas:'coleta', vendas:'venda', recebimentos:'recebimento', lancamentos:'lançamento de caixa', compromissos:'compromisso', compradores:'comprador'};
 const NOMES_FUNCAO = {dados_exemplo:'Começou com dados de exemplo', regerar_exemplo:'Regerou dados de exemplo', limpar_fazenda:'Apagou registros da fazenda',
   compromisso_pago:'Marcou compromisso como pago', regime_alterado:'Trocou o regime (Funrural/folha)', intervalo_alterado:'Mudou o intervalo ideal',
   funcao_ligada:'Ligou uma função', funcao_desligada:'Desligou uma função', safra_trocada:'Trocou a safra nos gráficos',
-  nfe_emitida:'Emitiu NF-e', cnpj_consultado:'Consultou CNPJ', sincronizar_manual:'Sincronizou manualmente'};
+  nfe_emitida:'Emitiu NF-e', cnpj_consultado:'Consultou CNPJ', sincronizar_manual:'Sincronizou manualmente',
+  entidade_filtrada:'Filtrou por CPF/CNPJ', mover_lote:'Moveu registros em lote'};
 const VERBO = {record_created:'Criou', record_updated:'Alterou', record_deleted:'Excluiu'};
 function rotulo(evento, item){
   if (evento === 'page_view') return 'Abriu ' + (NOMES_TELA[item] || item);

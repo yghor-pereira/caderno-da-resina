@@ -1,19 +1,14 @@
 import { brl, num, esc, hoje, uid } from './util.js';
 import { totalV, chave, S } from './regras.js';
-import { salvarLote, fazAtual, SES, E } from './estado.js';
+import { salvarLote, E, usuario, nomeEnt } from './estado.js';
+import { soDig, mascaraDoc, cnpjValido } from './doc.js';
 import { linha } from './mapa.js';
 import { track } from './metricas.js';
 
 /* ---------- NF-e (simulada) ---------- */
-function proxNumero(){ return S.vendas.reduce((m,v)=>v.nf? Math.max(m,v.nf.numero):m,0)+1; }
+/* numeração por inscrição (quem emite a nota), olhando todas as vendas da propriedade, mesmo com filtro de CPF/CNPJ */
+function proxNumero(fazenda){ return (S.todas?.vendas||S.vendas).filter(v=>!fazenda || v.fazenda===fazenda).reduce((m,v)=>v.nf? Math.max(m,v.nf.numero):m,0)+1; }
 const UFS='AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' ');
-const soDig = x => String(x||'').replace(/\D/g,'');
-function mascaraDoc(d){ d=soDig(d).slice(0,14);
-  return d.length<=11 ? d.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2')
-    : d.replace(/^(\d{2})(\d)/,'$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/,'$1.$2.$3').replace(/\.(\d{3})(\d)/,'.$1/$2').replace(/(\d{4})(\d)/,'$1-$2'); }
-function cnpjValido(c){ c=soDig(c); if(c.length!==14||/^(\d)\1+$/.test(c)) return false;
-  const dv=n=>{ let s=0,p=n-7; for(let i=0;i<n;i++){ s+=+c[i]*p--; if(p<2) p=9; } const r=s%11; return r<2?0:11-r; };
-  return dv(12)===+c[12] && dv(13)===+c[13]; }
 /* Consulta pública de CNPJ (dados da Receita Federal): BrasilAPI e, se falhar, Minha Receita */
 async function buscarCnpj(cnpj){
   const urls=[`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`,`https://minhareceita.org/${cnpj}`];
@@ -36,6 +31,7 @@ async function buscarCnpj(cnpj){
 function abrirEmissao(id){
   const v=S.vendas.find(x=>x.id===id), dlg=document.getElementById('dlgNf');
   if(!v||!dlg) return;
+  const faz=S.fazendas.find(f=>f.id===v.fazenda), emit=usuario()?.entidades.find(e=>e.id===v.entidade);
   const conhecido=S.compradores[v.comprador];
   let dest=conhecido?.dest||null;
   dlg.innerHTML=`<form class="dlg" id="fNf">
@@ -47,10 +43,11 @@ function abrirEmissao(id){
     </div>
     <div id="nfDest"></div>
     <div class="danfe">
-      <dl class="kv"><dt>Produto</dt><dd>Goma resina de pinus</dd>
+      <dl class="kv"><dt>Emitente</dt><dd>${esc(nomeEnt(emit))}${faz?' · IE '+esc(faz.ie):''}</dd>
+        <dt>Produto</dt><dd>Goma resina de pinus</dd>
         <dt>Quantidade</dt><dd>${num(v.kg)} kg × ${brl(v.preco)}</dd>
         <dt>Total da nota</dt><dd><b>${brl(totalV(v))}</b></dd>
-        <dt>Número</dt><dd>${proxNumero()} · série 1</dd></dl>
+        <dt>Número</dt><dd>${proxNumero(v.fazenda)} · série 1</dd></dl>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <label>Data de emissão<input id="nfData" type="date" value="${hoje()}" required></label>
@@ -59,7 +56,7 @@ function abrirEmissao(id){
     <div class="acts"><button type="button" class="btn sm ghost" id="nfCancel">Cancelar</button><button class="btn sm">Transmitir NF-e</button></div>
   </form>`;
   const q=sel=>dlg.querySelector(sel), docEl=q('#nfDoc'), box=q('#nfDest'), btn=q('#nfBuscar');
-  const ajustaCfop=()=>{ const uf=fazAtual()?.uf; if(dest?.uf && uf) q('#nfCfop').value = dest.uf===uf ? '5101':'6101'; };
+  const ajustaCfop=()=>{ const uf=faz?.uf; if(dest?.uf && uf) q('#nfCfop').value = dest.uf===uf ? '5101':'6101'; };
   const mostra=()=>{
     if(!dest){ box.innerHTML=''; return; }
     const ativa=!dest.situacao || /ATIVA/i.test(dest.situacao);
@@ -96,12 +93,13 @@ function abrirEmissao(id){
     if(!docEl.value.trim()){ docEl.focus(); return; }
     const d=soDig(docEl.value);
     if(d.length===14 && !cnpjValido(d)){ aviso('CNPJ inválido: confira os números digitados.',true); docEl.focus(); return; }
-    const nf={numero:proxNumero(),serie:1,data:q('#nfData').value,doc:mascaraDoc(d),dest,
+    const nf={numero:proxNumero(v.fazenda),serie:1,data:q('#nfData').value,doc:mascaraDoc(d),dest,
           cfop:q('#nfCfop').value,chave:chave(),protocolo:'1352'+Date.now().toString().slice(-11)};
-    const comp={id:conhecido?.id||uid(), doc:mascaraDoc(d), dest};
+    /* o cadastro do comprador é por inscrição: o de outra inscrição da propriedade serve de modelo, mas não é alterado */
+    const comp={id:conhecido?.fazenda===v.fazenda ? conhecido.id : uid(), doc:mascaraDoc(d), dest};
     E.aberta=v.id; dlg.onclose=null; dlg.close();
     track('feature_used', {funcao:'nfe_emitida'});
-    salvarLote([['vendas',{id:v.id, nf}], ['compradores', linha.comprador(v.comprador, comp, SES.fid)]]);
+    salvarLote([['vendas',{id:v.id, nf}], ['compradores', linha.comprador(v.comprador, comp, v.fazenda)]]);
   });
 }
 

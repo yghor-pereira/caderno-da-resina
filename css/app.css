@@ -154,3 +154,23 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .adm-u:last-child{border-bottom:0}
 .adm-u .a{font-weight:400;font-size:.85rem;color:var(--muted)}
 .adm-senha{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.35rem;font-weight:700;letter-spacing:.06em;margin:4px 0;user-select:all;overflow-wrap:anywhere}
+/* CPFs/CNPJs: cada um com a sua cor, no seletor do topo, nos registros e em "Faturado por" */
+.ent{display:inline-flex;align-items:center;gap:5px;font-weight:700;min-width:0;overflow-wrap:anywhere}
+.ent::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
+.ents{display:flex;flex-wrap:wrap;gap:4px 10px}
+.entsel{margin-top:12px}
+.entsel button .ent{font-weight:inherit}
+.venda>summary .pills .ent{font-size:.78rem}
+fieldset.fat{border:0;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:6px}
+fieldset.fat legend{font-size:.82rem;color:var(--muted);padding:0;margin-bottom:6px}
+.opc{position:relative;flex-direction:row;align-items:center;gap:6px;font-size:.85rem;font-weight:700;padding:8px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;min-height:40px}
+.opc input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.opc:has(input:checked){border-color:var(--pine);background:var(--pine-soft);color:var(--pine)}
+.opc:has(input:focus-visible){outline:2px solid var(--amber);outline-offset:1px}
+details.mais>summary{cursor:pointer;color:var(--pine);font-weight:700;font-size:.85rem;padding:4px 0}
+details.mais .campos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+details.mais .campos .full{grid-column:1/-1}
+details.mais small.note{font-size:.72rem}
+.selbar{background:var(--pine-soft);border-radius:10px;padding:10px;margin:6px 0;position:sticky;top:0;z-index:2}
+.rsel{margin:4px 0}
+.rsel b{color:var(--fg)}

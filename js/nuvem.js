@@ -3,14 +3,19 @@ import { SUPABASE_URL, SUPABASE_ANON } from './config.js';
 import { cursorDe, mesclar, tirarDaFila, marcarErro, erros, compactar } from './local.js';
 
 /* pais antes dos filhos, por causa das chaves estrangeiras */
-const ORDEM = ['perfis','fazendas','talhoes','ramais','contagens','estrias','coletas','vendas','recebimentos','lancamentos','compromissos','compradores'];
+const ORDEM = ['perfis','propriedades','entidades_fiscais','contas_bancarias','fazendas','vinculos','talhoes','ramais','contagens','estrias','coletas',
+  'vendas','recebimentos','lancamentos','compromissos','compradores','rateios'];
 const PAGINA = 1000;
 
 /* erro de banco tem código SQL (5 caracteres) ou PGRST; sem código é rede */
 const ehSessao = e => /^PGRST30/.test(e?.code||'') || e?.status===401 || /jwt/i.test(e?.message||'');
+/* tabela que ainda não existe no servidor (app publicado antes da migração): pula, sem travar as outras */
+const semTabela = e => e?.code==='PGRST205' || e?.code==='42P01';
 const ehDeDado = e => !ehSessao(e) && (/^[0-9A-Z]{5}$/.test(e?.code||'') || /^PGRST/.test(e?.code||''));
 function mensagem(tabela, e){
   if (e.code==='23505' && tabela==='fazendas') return 'Esta Inscrição Estadual já está cadastrada em outra conta.';
+  if (e.code==='23505' && tabela==='entidades_fiscais') return 'Este CPF/CNPJ já está cadastrado na sua conta.';
+  if (e.code==='23505' && tabela==='vinculos') return 'Este CPF/CNPJ já está vinculado a esta inscrição.';
   return 'Não foi possível salvar: '+(e.message||e.code);
 }
 
@@ -40,6 +45,7 @@ function criarNuvem(cliente, L, {ativo=()=>true}={}){
       const e = await upsert(tabela, rows);
       if (!ativo()) return {offline:false, parado:true};
       if (!e) { tirarDaFila(L, tabela, intactos(ids)); continue; }
+      if (semTabela(e)) continue;   // fica na fila até a tabela existir
       if (ehSessao(e)) return {offline:false, sessao:false, erros:erros(L).length};
       if (!ehDeDado(e)) return {offline:true, erros:erros(L).length};
       /* um registro com problema derruba o lote: reenvia um a um para achar o culpado */
@@ -61,7 +67,7 @@ function criarNuvem(cliente, L, {ativo=()=>true}={}){
      Paginação por chave (updated_at, id): várias linhas com o mesmo updated_at não se perdem
      entre páginas, e uma linha alterada durante a busca só muda de lugar para depois do cursor. */
   async function buscar(){
-    let mudou = 0;
+    let mudou = 0; const faltam = [];
     for (const tabela of ORDEM) {
       for (;;) {
         const c = cursorDe(L, tabela);
@@ -72,12 +78,13 @@ function criarNuvem(cliente, L, {ativo=()=>true}={}){
         try { res = await q.order('updated_at').order('id').limit(PAGINA); }
         catch(e) { return {offline:true}; }
         if (!ativo()) return {offline:false, parado:true};
+        if (semTabela(res.error)) { faltam.push(tabela); break; }
         if (res.error) return ehSessao(res.error) ? {offline:false, sessao:false} : ehDeDado(res.error) ? {offline:false, erro:true} : {offline:true};
         if (res.data.length) mudou += mesclar(L, tabela, res.data);   // avança o cursor a cada página
         if (res.data.length < PAGINA) break;
       }
     }
-    return {offline:false, mudou};
+    return {offline:false, mudou, faltam};
   }
   let rodando = null;
   /* envia e depois busca; chamadas simultâneas reaproveitam a mesma execução */
@@ -89,7 +96,7 @@ function criarNuvem(cliente, L, {ativo=()=>true}={}){
         const b = await buscar();
         const ok = !b.offline && b.sessao!==false && !b.erro && !b.parado;
         if (ok) compactar(L);
-        return {ok, offline:!!b.offline, sessao:b.sessao, mudou:b.mudou||0, erros:erros(L).length};
+        return {ok, offline:!!b.offline, sessao:b.sessao, mudou:b.mudou||0, faltam:b.faltam||[], erros:erros(L).length};
       } finally { rodando = null; }
     })();
   }
@@ -178,4 +185,4 @@ async function ieDisponivel(ie, ignorar){
   } catch(e) { return null; }   // sem rede: não dá para saber agora
 }
 
-export { SUSPENSA, erroAuth, CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, trocarSenha, ehAdmin, ieDisponivel };
+export { semTabela, SUSPENSA, erroAuth, CDN, ORDEM, PAGINA, depoisDe, criarNuvem, classificarSessao, conectar, entrar, cadastrar, sair, sessao, trocarSenha, ehAdmin, ieDisponivel };

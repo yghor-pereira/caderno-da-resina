@@ -175,7 +175,7 @@ test('sessão vencida no envio um a um não marca erro nem tira da fila', async 
 test('busca que falha por erro de dado não conta como sincronização bem-sucedida', async () => {
   const L = novoL();
   const c = clienteFalso();
-  c.from = () => ({ select: () => { const b = { gte: () => b, or: () => b, order: () => b, limit: () => b, then: (res) => Promise.resolve({ data: null, error: { code: '42P01', message: 'tabela' } }).then(res) }; return b; } });
+  c.from = () => ({ select: () => { const b = { gte: () => b, or: () => b, order: () => b, limit: () => b, then: (res) => Promise.resolve({ data: null, error: { code: '42501', message: 'sem permissão' } }).then(res) }; return b; } });
   const r = await criarNuvem(c, L).sincronizar();
   assert.equal(r.ok, false);
 });
@@ -215,4 +215,20 @@ test('conta suspensa: sessão e login viram a mensagem de conta suspensa', () =>
   assert.equal(classificarSessao({ data: { session: null }, error: { name: 'AuthApiError', status: 400, message: 'Invalid Refresh Token: User Banned' } }), 'bloqueado');
   assert.equal(erroAuth({ code: 'user_banned', message: 'User is banned' }), SUSPENSA);
   assert.equal(erroAuth({ code: 'invalid_credentials', message: 'Invalid login credentials' }), 'E-mail ou senha incorretos.');
+});
+
+test('tabela que ainda não existe no servidor é pulada: o resto sincroniza e a linha espera na fila', async () => {
+  const L = novoL();
+  gravar(L, 'propriedades', { id: 'p1', nome: 'P', uf: 'PR' });
+  gravar(L, 'fazendas', { id: 'f1', nome: 'F', ie: '12345678', uf: 'PR' });
+  const falta = { code: 'PGRST205', message: "Could not find the table 'public.propriedades'" };
+  const base = clienteFalso({ upsert: t => ({ error: t === 'propriedades' ? falta : null }), linhas: { talhoes: [{ id: 't1', updated_at: '2026-01-01T00:00:00Z', nome: 'T' }] } });
+  const c = { from: t => t === 'propriedades' ? { ...base.from(t), select: () => { const b = { or: () => b, gte: () => b, order: () => b, limit: async () => ({ data: null, error: falta }) }; return b; } } : base.from(t) };
+  const n = criarNuvem(c, L);
+  const r = await n.sincronizar();
+  assert.equal(r.ok, true);
+  assert.equal(pendentes(L), 1, 'a propriedade continua na fila');
+  assert.ok(!ativas(L, 'fazendas').some(f => f._erro));
+  assert.equal(ativas(L, 'talhoes').length, 1, 'a busca seguiu para as tabelas seguintes');
+  assert.deepEqual(r.faltam, ['propriedades'], 'avisa quais tabelas faltam (o app não monta o exemplo nem completa o cadastro)');
 });

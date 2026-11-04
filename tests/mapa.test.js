@@ -31,8 +31,9 @@ test('ida e volta: tabelas remontam os mesmos dados do exemplo', () => {
 
 test('colunas no formato do banco', () => {
   const l = dadosParaLinhas(ex, FID);
-  assert.deepEqual(Object.keys(l.vendas[0]).sort(), ['com_nota', 'comprador', 'data', 'fator', 'fazenda_id', 'id', 'kg', 'nf', 'preco', 'venc']);
-  assert.deepEqual(Object.keys(l.lancamentos[0]).sort(), ['cat', 'data', 'descr', 'fazenda_id', 'id', 'tipo', 'valor']);
+  assert.deepEqual(Object.keys(l.vendas[0]).sort(), ['com_nota', 'comprador', 'data', 'entidade_id', 'fator', 'fazenda_id', 'id', 'kg', 'nf', 'numero_documento', 'preco', 'tipo_documento', 'venc']);
+  assert.deepEqual(Object.keys(l.lancamentos[0]).sort(), ['anexo_url', 'cat', 'categoria_irpf', 'conta_bancaria_id', 'contraparte_documento', 'contraparte_nome', 'data',
+    'data_competencia', 'descr', 'entidade_id', 'fazenda_id', 'id', 'numero_documento', 'tipo', 'tipo_documento', 'valor']);
   assert.deepEqual(Object.keys(l.contagens[0]).sort(), ['arvores', 'data', 'id', 'motivo', 'ramal_id']);
   assert.deepEqual(Object.keys(l.estrias[0]).sort(), ['data', 'dias', 'fazenda_id', 'id', 'qtd', 'ramais', 'resineiro', 'talhao_id']);
 });
@@ -76,11 +77,11 @@ test('linhasDoTalhao reúne o talhão, seus ramais, contagens, estrias e coletas
   assert.equal(conta('coletas'), ex.producao.filter(p => p.talhao === t.id).length);
 });
 
-test('fazendasDe lista as fazendas ativas com seus dados montados', () => {
+test('fazendasDe lista as inscrições ativas', () => {
   const fs = fazendasDe(L);
   assert.equal(fs.length, 1);
   assert.equal(fs[0].nome, 'Capão Alto');
-  assert.equal(fs[0].dados.talhoes.length, 3);
+  assert.equal(fs[0].ie, '254123987');
   excluir(L, 'fazendas', FID);
   assert.deepEqual(fazendasDe(L), []);
 });
